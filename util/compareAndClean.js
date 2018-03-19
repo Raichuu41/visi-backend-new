@@ -29,18 +29,22 @@ export function compareAndClean(oldNodes, newNodes){
         nodes[i].name = newNodes[i].name
 
         nodes[i].x = newNodes[i]._x
-        nodes[i].y = newNodes[i]._Y
+        nodes[i].y = newNodes[i]._y
 
         nodes[i].links = newNodes[i].links
 
-        nodes[i].label = newNodes.label
+        nodes[i].label = newNodes[i].label
 
         nodes[i].mPosition = compareXY(oldNodes[i], newNodes[i])
         nodes[i].mLinks = compareLinks(oldNodes[i], newNodes[i])
 
 
+        if(nodes[i].mLinks) {
+            console.log("A Node with updated Links - node.mLinks = true")
+            console.log(nodes[i])
+        }
     })
-    // console.log(nodes)
+
 
     return nodes
 

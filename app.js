@@ -78,8 +78,8 @@ io.on( "connection", function( socket )
     }
     */
     socket.on("requestImage", function(data) {
-        console.log("requestImage")
-        console.log(data.name)
+        //console.log("requestImage")
+        //console.log(data.name)
         if(data.name) {
             const iconPath = `${__dirname}/images/${data.name}.jpg`
             fs.readFile(iconPath, function(err, buf){
@@ -99,11 +99,18 @@ io.on( "connection", function( socket )
 
 
 
-
         // TODO convert data to graph again
         if(process.env.NODE_ENV === 'development') {
+            console.log("get mock data")
+            // console.log(Object.keys(nodesStore).length)
+
+            updatedNodes = compareAndClean(nodesStore, updatedNodes)
+
+
+            nodesStore = updatedNodes
+
             for(let i = 0; i < 100; i++) {
-                const node = exampleGraph[i]
+                const node = updatedNodes[i] || exampleGraph[i]
                 node.index = i      // !important -
                 if(!node.x && !node.y) {
                     node.x = Math.random()*40 -20
@@ -187,9 +194,9 @@ io.on( "connection", function( socket )
         } else {
             console.log("send data to python api")
             // console.log(Object.keys(nodesStore).length)
-            if(Object.keys(nodesStore).length) {
-                updatedNodes = compareAndClean(nodesStore, updatedNodes)
-            }
+
+            updatedNodes = compareAndClean(nodesStore, updatedNodes)
+
             try {
 
 

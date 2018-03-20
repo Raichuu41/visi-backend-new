@@ -7,7 +7,8 @@ import numpy as np
 import pickle
 from math import sqrt
 
-from snack import snack_embed
+sys.path.append('/export/home/kschwarz/Documents/Masters/Modify_TSNE/')
+from modify_snack import snack_embed_mod
 sys.path.append('/export/home/kschwarz/anaconda3/envs/py27/lib/python2.7/site-packages/faiss-master/')
 import faiss
 
@@ -24,8 +25,9 @@ labels = testset['label']
 features = testset['features']
 
 n_neighbors = 5
-embedding_func = snack_embed
-kwargs = {'contrib_cost_tsne': 100, 'contrib_cost_triplets': 0.1, 'perplexity': 30, 'theta': 0.5, 'no_dims': 2}
+embedding_func = snack_embed_mod
+kwargs = {'contrib_cost_tsne': 100, 'contrib_cost_triplets': 0.1, 'contrib_cost_position': 0.1,
+          'perplexity': 30, 'theta': 0.5, 'no_dims': 2}
 
 
 # get nearest neighbors once
@@ -35,6 +37,7 @@ knn_distances, knn_indices = index.search(np.stack(features).astype('float32'), 
 
 prev_embedding = None
 triplets = np.zeros((1, 3)).astype(np.long)
+position_constraints = np.zeros((1, 3))
 graph = None
 
 
@@ -82,7 +85,9 @@ def initialise_graph():
     global triplets
     global kwargs
     print('compute embedding...')
-    embedding = embedding_func(np.stack(features).astype(np.double), triplets=triplets, **kwargs)
+    embedding = embedding_func(np.stack(features).astype(np.double),
+                               triplets=triplets, position_constraints=position_constraints,
+                               **kwargs)
     print('done.')
     prev_embedding = embedding.copy()
     return create_nodes(ids, embedding, labels)
@@ -101,38 +106,58 @@ def get_triplets(query, prev_links, curr_links):
     # sort by link strength
     positives = sorted(positives.items(), key=lambda x: x[1], reverse=True)
 
-    # get n_pos random triplets within current neighbors
-    n_pos = 5
-    similars = np.random.randint(0, len(positives) - 1, n_pos)
-    dissimilars = [np.random.randint(s + 1, len(positives)) for s in similars]
+    if len(positives) > 1:
+        # get n_pos random triplets within current neighbors
+        n_pos = 5
+        similars = np.random.randint(0, len(positives) - 1, n_pos)
+        dissimilars = [np.random.randint(s + 1, len(positives)) for s in similars]
 
-    triplets = [[query, s, d] for s, d in zip(similars, dissimilars)]
+        triplets = [[query, s, d] for s, d in zip(similars, dissimilars)]
 
-    # get two positive triplets for each added link
-    for k, v in added.items():
-        s = positives.index((k, v))
-        if s == len(positives) - 1:
-            continue
-        dissimilars = np.random.randint(s + 1, len(positives), 2)
-        for d in dissimilars:
-            triplets.append([query, s, d])
+        # get two positive triplets for each added link
+        for k, v in added.items():
+            s = positives.index((k, v))
+            if s == len(positives) - 1:
+                continue
+            dissimilars = np.random.randint(s + 1, len(positives), 2)
+            for d in dissimilars:
+                triplets.append([query, s, d])
 
-    # get two negative triplets for each removed link
-    for k in removed.keys():
-        similars = np.random.randint(0, len(positives), 2)
-        for s in similars:
-            triplets.append([query, s, k])
+    if len(positives) > 0:
+        # get two negative triplets for each removed link
+        for k in removed.keys():
+            similars = np.random.randint(0, len(positives), 2)
+            for s in similars:
+                triplets.append([query, s, k])
 
     return np.stack(triplets)
+
+
+def get_pos_constraints(indices, embedding, k=10):
+    # compute k nearest neighbors in embedding
+    index = faiss.IndexFlatL2(embedding.shape[1])  # build the index
+    index.add(np.stack(embedding).astype('float32'))  # add vectors to the index
+    positions = embedding[np.array(indices).astype(int)]
+    knn_distances, knn_indices = index.search(positions.astype('float32'), k + 1)
+
+    # use normalized inverse distance as weight
+    weights = -knn_distances / knn_distances.max() + 1
+
+    pos_constraints = []
+    for idx, neighbors, weight in zip(knn_indices[:, 0], knn_indices[:, 1:], weights[:, 1:]):
+        for n, w in zip(neighbors, weight):
+            pos_constraints.append([idx, n, w])
+    return np.stack(pos_constraints)
 
 
 def compute_graph(current_graph=[]):
     global prev_embedding
     global graph
     global triplets
+    global position_constraints
     global kwargs
 
-    if len(current_graph) == 0:
+    if len(current_graph) == 0 or prev_embedding is None:
         print('initialise graph')
         graph = initialise_graph()
         print('Embedding range: x [{}, {}], y [{}, {}]'.format(prev_embedding[0].min(), prev_embedding[0].max(),
@@ -156,22 +181,33 @@ def compute_graph(current_graph=[]):
         if node['mPosition']:
             current_embedding[idx, 0] = node['x']
             current_embedding[idx, 1] = node['y']
-            # current_embedding[idx, 1] = 5       # TODO DUMMY VALUE, REMOVE
             modified_pos.append(idx)
 
         if node['mLinks']:
             modified_links.append(idx)
 
     print('modified nodes:\nPosition: {}\nLinks:{}'.format(modified_pos, modified_links))
+
+    # ADD NEW CONSTRAINTS
+    # fix relative neighborhood of samples who's position changed
+    if modified_pos:
+        pos_constraints = get_pos_constraints(modified_pos, current_embedding)
+        position_constraints = np.vstack((position_constraints, pos_constraints))
+        print('added {} position constraints'.format(len(pos_constraints)))
+        print(pos_constraints)
+
     # compute triplets from user modifications
     n_triplets = 0
     for idx in modified_links:
         prev_links = graph[idx]['links']
         curr_links = current_graph[idx]['links']
 
-        trplts = get_triplets(idx, prev_links, curr_links)
-        n_triplets += len(trplts)
-        triplets = np.vstack((triplets, trplts))
+        if len(curr_links) > 0:
+            trplts = get_triplets(idx, prev_links, curr_links)
+            n_triplets += len(trplts)
+            triplets = np.vstack((triplets, trplts))
+        # update links in graph
+        graph[idx]['links'] = current_graph[idx]['links']
     print('added {} triplets'.format(n_triplets))
 
 
@@ -179,7 +215,9 @@ def compute_graph(current_graph=[]):
     kwargs['initial_Y'] = current_embedding
 
     print('compute embedding...')
-    embedding = embedding_func(np.stack(features).astype(np.double), triplets=triplets, **kwargs)
+    embedding = embedding_func(np.stack(features).astype(np.double),
+                               triplets=triplets, position_constraints=position_constraints,
+                               **kwargs)
     print('done.')
     prev_embedding = embedding.copy()
 

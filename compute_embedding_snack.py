@@ -15,10 +15,13 @@ import faiss
 colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
           'lightseagreen', 'dodgerblue', 'coral', 'orange', 'mediumpurple']
 
-testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
-ids = testset['id'][:100]
-labels = testset['label'][:100]
-features = testset['features'][:100]
+# testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
+print('loading testset...')
+testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
+print('done.')
+ids = testset['id']
+labels = testset['label']
+features = testset['features']
 
 n_neighbors = 5
 embedding_func = snack_embed
@@ -132,19 +135,28 @@ def compute_graph(current_graph=[]):
     if len(current_graph) == 0:
         print('initialise graph')
         graph = initialise_graph()
+        print('Embedding range: x [{}, {}], y [{}, {}]'.format(prev_embedding[0].min(), prev_embedding[0].max(),
+                                                               prev_embedding[1].min(), prev_embedding[1].max()))
         return graph
 
     print('update graph')
+    # modify current graph such that keys are ints and links keys are ints
+    tmp_graph = {}
+    for k, v in current_graph.items():
+        v['links'] = {int(kk): vv for kk, vv in v['links'].items()}
+        tmp_graph[int(k)] = v
+    current_graph = tmp_graph.copy()
+    del tmp_graph
+
     # get current embedding after user modification
     current_embedding = prev_embedding.copy()
     modified_pos = []
     modified_links = []
     for idx, node in current_graph.items():
-        idx = int(idx)
         if node['mPosition']:
             current_embedding[idx, 0] = node['x']
-            # current_embedding[idx, 1] = node['y']
-            current_embedding[idx, 1] = 5       # TODO DUMMY VALUE, REMOVE
+            current_embedding[idx, 1] = node['y']
+            # current_embedding[idx, 1] = 5       # TODO DUMMY VALUE, REMOVE
             modified_pos.append(idx)
 
         if node['mLinks']:
@@ -155,7 +167,7 @@ def compute_graph(current_graph=[]):
     n_triplets = 0
     for idx in modified_links:
         prev_links = graph[idx]['links']
-        curr_links = current_embedding[idx]['links']
+        curr_links = current_graph[idx]['links']
 
         trplts = get_triplets(idx, prev_links, curr_links)
         n_triplets += len(trplts)
@@ -176,4 +188,5 @@ def compute_graph(current_graph=[]):
         graph[idx].update({'x': x, 'y': y})
 
     return graph
+
 

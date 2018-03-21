@@ -136,13 +136,32 @@ def initialise_graph():
     """Compute standard TSNE embedding and save it as graph using nn as link strengths."""
     global prev_embedding
     global triplets
+    global position_constraints
     global kwargs
-    print('compute embedding...')
+    global test_triplets
+    global triplet_error
+
+    if prev_embedding is not None:
+        # reset global variables
+        prev_embedding = None
+        triplets = np.zeros((1, 3)).astype(np.long)
+        triplet_error = []
+        position_constraints = np.zeros((1, 3))
+
+        print('compute embedding...')
+
     embedding = embedding_func(np.stack(features).astype(np.double),
                                triplets=triplets, position_constraints=position_constraints,
                                **kwargs)
     print('done.')
     prev_embedding = embedding.copy()
+
+    # evaluate GTE
+    triplet_error.append(GTE(embedding, test_triplets))
+    print('GTE: {}% of test triplets violated.'.format(triplet_error[-1] * 100))
+    with open('_err_tracking.pkl', 'wb') as outfile:
+        pickle.dump(triplet_error, outfile)
+
     return create_nodes(ids, embedding, labels)
 
 
@@ -253,12 +272,11 @@ def compute_graph(current_graph=[]):
         samples = set(pos_constraints[:, 0])
         for s in samples:
             row_idx = np.where(position_constraints == s)[0]
-            position_constraints = np.delete(triplets, position_constraints, axis=0)
+            position_constraints = np.delete(position_constraints, row_idx, axis=0)
 
         # add new position constraints
         position_constraints = np.vstack((position_constraints, pos_constraints))
         print('added {} position constraints'.format(len(pos_constraints)))
-        print(pos_constraints)
 
     # compute triplets from user modifications
     n_triplets = 0

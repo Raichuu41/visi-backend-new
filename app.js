@@ -12,7 +12,22 @@ import exampleGraph from './mock/example_graph'
 import { compareAndClean } from "./util/compareAndClean";
 import { getRandomColor } from "./util/getRandomColor";
 
-//const mockedNodes = mergeLinksToNodes(graphMock.nodes, graphMock.links)
+
+const colorTable = {
+    0: '#ff3b14',
+    1: '#1313ff',
+    2: '#00ff0a',
+    3: '#fffa00',
+    4: '#ff00c0',
+    5: '#04fff0',
+    6: '#ff8685',
+    7: '#858bff',
+    9: '#7cff6d',
+    10: '#fffe6f',
+    11: '#ff6af1',
+    12: '#85feff'
+}
+
 
 // Socket.io
 const io = socket_io();
@@ -116,18 +131,32 @@ io.on( "connection", function( socket )
             if(!Object.keys(updatedNodes).length) updatedNodes = exampleGraph
 
             // saving used colors
-            const colorsHash = {};
+            const colorKeyHash = {};
+
+            const colorHash = {}
 
             Object.values(updatedNodes).forEach(node => {
+
+                if(colorHash[node.label]) {
+                    node.color = colorHash[node.label]
+                } else {
+                    const index = Object.keys(colorHash).length
+                    colorHash[node.label] = colorTable[index]
+                    node.color = colorHash[node.label]
+                }
+
+
                 while(true) {
                     const colorKey = getRandomColor();
-                    if (!colorsHash[colorKey]) {
+                    if (!colorKeyHash[colorKey]) {
                         node.colorKey = colorKey;
-                        colorsHash[colorKey] = node;
+                        colorKeyHash[colorKey] = node;
                         return;
                     }
                 }
             });
+
+            socket.emit("updateLabels", colorHash)
 
             nodesStore = updatedNodes
 
@@ -219,8 +248,10 @@ io.on( "connection", function( socket )
 
             updatedNodes = compareAndClean(nodesStore, updatedNodes)
 
-            // saving used colors
-            const colorsHash = {};
+            // saving used colorKeys
+            const colorsKeyHash = {};
+
+            const colorHash = {}
 
             try {
                 fetch('http://localhost:8000/nodes', {
@@ -240,13 +271,23 @@ io.on( "connection", function( socket )
                         Object.values(nodes).map((node, i) =>  {
                             node.index = i
 
+                            // add colorKey
                             while(true) {
                                 const colorKey = getRandomColor();
-                                if (!colorsHash[colorKey]) {
+                                if (!colorsKeyHash[colorKey]) {
                                     node.colorKey = colorKey;
-                                    colorsHash[colorKey] = node;
+                                    colorsKeyHash[colorKey] = node;
                                     break;
                                 }
+                            }
+
+                            // add label color
+                            if(colorHash[node.label]) {
+                                node.color = colorHash[node.label]
+                            } else {
+                                const index = Object.keys(colorHash).length
+                                colorHash[node.label] = colorTable[index]
+                                node.color = colorHash[node.label]
                             }
 
                             const iconPath = `${__dirname}/icons/${node.name}.jpg`
@@ -261,6 +302,8 @@ io.on( "connection", function( socket )
                                 }
                             });
                         })
+
+                        socket.emit("updateLabels", colorHash)
                     })
             } catch(err) {
                 console.error(err)

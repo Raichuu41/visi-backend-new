@@ -62,11 +62,15 @@ colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
 
 print('loading testset...')
 # testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
-testset = pickle.load(open('../wikiart/style_testset_easy.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/style_testset_easy.pkl', 'rb'))
+testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
 
 print('done.')
 ids = testset['id']
 labels = testset['label']
+# label_to_int = {'cubism': 0, 'impressionism': 1, 'surrealism': 2}
+# clabels = [colors[label_to_int[l]] for l in labels]
+
 features = testset['features']
 
 # sample test triplets
@@ -155,6 +159,7 @@ def get_triplets(query, prev_links, curr_links):
     # sort by link strength
     positives = sorted(positives.items(), key=lambda x: x[1], reverse=True)
 
+    triplets = []
     if len(positives) > 1:
         # get n_pos random triplets within current neighbors
         n_pos = 5
@@ -205,8 +210,8 @@ def compute_graph(current_graph=[]):
     global triplets
     global position_constraints
     global kwargs
-    # global test_triplets
-    # global triplet_error
+    global test_triplets
+    global triplet_error
 
     if len(current_graph) == 0 or prev_embedding is None:
         print('initialise graph')
@@ -243,6 +248,14 @@ def compute_graph(current_graph=[]):
     # fix relative neighborhood of samples who's position changed
     if modified_pos:
         pos_constraints = get_pos_constraints(modified_pos, current_embedding)
+
+        # reset existing constraints of sample
+        samples = set(pos_constraints[:, 0])
+        for s in samples:
+            row_idx = np.where(position_constraints == s)[0]
+            position_constraints = np.delete(triplets, position_constraints, axis=0)
+
+        # add new position constraints
         position_constraints = np.vstack((position_constraints, pos_constraints))
         print('added {} position constraints'.format(len(pos_constraints)))
         print(pos_constraints)
@@ -277,10 +290,10 @@ def compute_graph(current_graph=[]):
         graph[idx].update({'x': x, 'y': y})
 
     # evaluate GTE
-    # triplet_error.append(GTE(embedding, test_triplets))
-    # print('GTE: {}% of test triplets violated.'.format(triplet_error[-1] * 100))
-    # with open('_err_tracking.pkl', 'wb') as outfile:
-    #     pickle.dump(triplet_error, outfile)
+    triplet_error.append(GTE(embedding, test_triplets))
+    print('GTE: {}% of test triplets violated.'.format(triplet_error[-1] * 100))
+    with open('_err_tracking.pkl', 'wb') as outfile:
+        pickle.dump(triplet_error, outfile)
 
     return graph
 

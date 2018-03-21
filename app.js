@@ -10,6 +10,7 @@ const app = express()
 import exampleGraph from './mock/example_graph'
 //import { mergeLinksToNodes } from "./util/mergeLinksToNodes";
 import { compareAndClean } from "./util/compareAndClean";
+import { getRandomColor } from "./util/getRandomColor";
 
 //const mockedNodes = mergeLinksToNodes(graphMock.nodes, graphMock.links)
 
@@ -57,6 +58,8 @@ app.use('/python', (req, res) => {
 
 */
 
+// checking for allready used color
+
 // socket.io events
 
 io.on( "connection", function( socket )
@@ -83,7 +86,10 @@ io.on( "connection", function( socket )
         if(data.name) {
             const iconPath = `${__dirname}/images/${data.name}.jpg`
             fs.readFile(iconPath, function(err, buf){
-                // TODO handle error
+                if (err) {
+                    console.error(err)
+                    return
+                }
                 socket.emit('receiveImage', {name: data.name, buffer: buf.toString('base64'), index: data.index});
             });
         }
@@ -106,11 +112,27 @@ io.on( "connection", function( socket )
 
             updatedNodes = compareAndClean(nodesStore, updatedNodes)
 
+            // empty in first time starting
+            if(!Object.keys(updatedNodes).length) updatedNodes = exampleGraph
+
+            // saving used colors
+            const colorsHash = {};
+
+            Object.values(updatedNodes).forEach(node => {
+                while(true) {
+                    const colorKey = getRandomColor();
+                    if (!colorsHash[colorKey]) {
+                        node.colorKey = colorKey;
+                        colorsHash[colorKey] = node;
+                        return;
+                    }
+                }
+            });
 
             nodesStore = updatedNodes
 
             for(let i = 0; i < 100; i++) {
-                const node = updatedNodes[i] || exampleGraph[i]
+                const node = updatedNodes[i]
                 node.index = i      // !important -
                 if(!node.x && !node.y) {
                     node.x = Math.random()*40 -20
@@ -197,10 +219,10 @@ io.on( "connection", function( socket )
 
             updatedNodes = compareAndClean(nodesStore, updatedNodes)
 
+            // saving used colors
+            const colorsHash = {};
+
             try {
-
-
-
                 fetch('http://localhost:8000/nodes', {
                     method: 'POST',
                     header: { 'Content-type': 'application/json'},
@@ -216,7 +238,17 @@ io.on( "connection", function( socket )
                         nodesStore = nodes
 
                         Object.values(nodes).map((node, i) =>  {
-                            node.index = i  // TODO remove
+                            node.index = i
+
+                            while(true) {
+                                const colorKey = getRandomColor();
+                                if (!colorsHash[colorKey]) {
+                                    node.colorKey = colorKey;
+                                    colorsHash[colorKey] = node;
+                                    break;
+                                }
+                            }
+
                             const iconPath = `${__dirname}/icons/${node.name}.jpg`
                             fs.readFile(iconPath, function(err, buf){
                                 if(err) console.log(err)
@@ -233,9 +265,7 @@ io.on( "connection", function( socket )
             } catch(err) {
                 console.error(err)
             }
-
         }
-
     })
 
     socket.on('disconnect', function() {

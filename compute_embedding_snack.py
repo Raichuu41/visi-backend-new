@@ -7,22 +7,70 @@ import numpy as np
 import pickle
 from math import sqrt
 
+
+def GTE(embedding, triplets):
+    error = 0
+    for anchor, pos, neg in triplets.astype(long):
+        # compute squared euclidean distance in embedding
+        x0, y0 = embedding[anchor]
+        xp, yp = embedding[pos]
+        xn, yn = embedding[neg]
+
+        dp = (xp - x0)**2 + (yp - y0)**2
+        dn = (xn - x0)**2 + (yn - y0)**2
+
+        if dp >= dn:
+            error += 1
+    return float(error) / len(triplets)
+
+
+def generate_triplets(labels, n=10):
+    label_names = set(labels)
+    labels = np.array(labels)
+    n_per_class = np.floor(float(n) / len(label_names))
+    triplets = []
+    for i, l in enumerate(label_names):
+        similars = np.where(labels == l)[0]
+        differents = np.where(labels != l)[0]
+        while len(triplets) < (i+1) * n_per_class:
+            a, s = np.random.choice(similars, 2, replace=False)
+            d = np.random.choice(differents)
+            if (a, s, d) not in triplets:
+                triplets.append((a, s, d))
+    # fill up rest of triplets with random choices
+    while len(triplets) < n:
+        l = np.random.choice(list(label_names))
+        a, s = np.random.choice(np.where(labels == l)[0], 2, replace=False)
+        d = np.random.choice(np.where(labels != l)[0])
+        if (a, s, d) not in triplets:
+            triplets.append((a, s, d))
+
+    return np.stack(triplets).astype(long)
+
+
 sys.path.append('/export/home/kschwarz/Documents/Masters/Modify_TSNE/')
 from modify_snack import snack_embed_mod
 sys.path.append('/export/home/kschwarz/anaconda3/envs/py27/lib/python2.7/site-packages/faiss-master/')
 import faiss
 
+import matplotlib.pyplot as plt
+plt.ion()
+
 
 colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
           'lightseagreen', 'dodgerblue', 'coral', 'orange', 'mediumpurple']
 
-# testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
 print('loading testset...')
-testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
+testset = pickle.load(open('../wikiart/style_testset_easy.pkl', 'rb'))
+
 print('done.')
 ids = testset['id']
 labels = testset['label']
 features = testset['features']
+
+# sample test triplets
+test_triplets = generate_triplets(labels, n=50)
 
 n_neighbors = 5
 embedding_func = snack_embed_mod
@@ -37,6 +85,7 @@ knn_distances, knn_indices = index.search(np.stack(features).astype('float32'), 
 
 prev_embedding = None
 triplets = np.zeros((1, 3)).astype(np.long)
+triplet_error = []
 position_constraints = np.zeros((1, 3))
 graph = None
 
@@ -156,6 +205,8 @@ def compute_graph(current_graph=[]):
     global triplets
     global position_constraints
     global kwargs
+    # global test_triplets
+    # global triplet_error
 
     if len(current_graph) == 0 or prev_embedding is None:
         print('initialise graph')
@@ -224,6 +275,12 @@ def compute_graph(current_graph=[]):
     # update position of nodes in graph
     for idx, (x, y) in enumerate(embedding):
         graph[idx].update({'x': x, 'y': y})
+
+    # evaluate GTE
+    # triplet_error.append(GTE(embedding, test_triplets))
+    # print('GTE: {}% of test triplets violated.'.format(triplet_error[-1] * 100))
+    # with open('_err_tracking.pkl', 'wb') as outfile:
+    #     pickle.dump(triplet_error, outfile)
 
     return graph
 

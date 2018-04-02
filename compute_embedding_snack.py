@@ -76,7 +76,7 @@ features = testset['features']
 # sample test triplets
 test_triplets = generate_triplets(labels, n=50)
 
-n_neighbors = 5
+n_neighbors = 10
 embedding_func = snack_embed_mod
 kwargs = {'contrib_cost_tsne': 100, 'contrib_cost_triplets': 0.1, 'contrib_cost_position': 0.1,
           'perplexity': 30, 'theta': 0.5, 'no_dims': 2}
@@ -141,14 +141,13 @@ def initialise_graph():
     global test_triplets
     global triplet_error
 
-    if prev_embedding is not None:
-        # reset global variables
-        prev_embedding = None
-        triplets = np.zeros((1, 3)).astype(np.long)
-        triplet_error = []
-        position_constraints = np.zeros((1, 3))
+    # reset global variables
+    prev_embedding = None
+    triplets = np.zeros((1, 3)).astype(np.long)
+    triplet_error = []
+    position_constraints = np.zeros((1, 3))
 
-        print('compute embedding...')
+    print('compute embedding...')
 
     embedding = embedding_func(np.stack(features).astype(np.double),
                                triplets=triplets, position_constraints=position_constraints,
@@ -288,6 +287,8 @@ def compute_graph(current_graph=[]):
             trplts = get_triplets(idx, prev_links, curr_links)
             n_triplets += len(trplts)
             triplets = np.vstack((triplets, trplts))
+            if (triplets[0] == np.zeros((1, 3))).all():     # delete dummy
+                triplets = np.delete(triplets, 0, axis=0)
         # update links in graph
         graph[idx]['links'] = current_graph[idx]['links']
     print('added {} triplets'.format(n_triplets))
@@ -308,11 +309,13 @@ def compute_graph(current_graph=[]):
         graph[idx].update({'x': x, 'y': y})
 
     # evaluate GTE
+    if not (triplets[0] == np.zeros((1, 3))).all():
+        train_triplet_error = GTE(embedding, triplets)
+        print('User generated {} triplets, of which {}% are violated.'.format(len(triplets), train_triplet_error * 100))
     triplet_error.append(GTE(embedding, test_triplets))
     print('GTE: {}% of test triplets violated.'.format(triplet_error[-1] * 100))
     with open('_err_tracking.pkl', 'wb') as outfile:
         pickle.dump(triplet_error, outfile)
 
     return graph
-
 

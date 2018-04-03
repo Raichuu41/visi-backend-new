@@ -61,9 +61,9 @@ colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
           'lightseagreen', 'dodgerblue', 'coral', 'orange', 'mediumpurple']
 
 print('loading testset...')
-# testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
+testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
 # testset = pickle.load(open('../wikiart/style_testset_easy.pkl', 'rb'))
-testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
 
 print('done.')
 ids = testset['id']
@@ -164,43 +164,20 @@ def initialise_graph():
     return create_nodes(ids, embedding, labels)
 
 
-def get_triplets(query, prev_links, curr_links):
-    # use link strength to infer triplet constraints
-
-    # get removed, mutual and added links
-    removed = {k: v for k, v in prev_links.items() if k not in curr_links.keys()}
-    mutual = {k: v for k, v in prev_links.items() if k in curr_links.keys()}
-    added = {k: v for k, v in curr_links.items() if k not in prev_links.keys()}
-
-    positives = mutual.copy()
-    positives.update(added)
-    # sort by link strength
-    positives = sorted(positives.items(), key=lambda x: x[1], reverse=True)
-
+def get_triplets(query, similars, differents, multiply=1, seed=123):
+    np.random.seed(seed)
     triplets = []
-    if len(positives) > 1:
-        # get n_pos random triplets within current neighbors
-        n_pos = 5
-        similars = np.random.randint(0, len(positives) - 1, n_pos)
-        dissimilars = [np.random.randint(s + 1, len(positives)) for s in similars]
+    assert len(similars) > 0 and len(differents) > 0, 'Need at least one similar and one different sample for query.'
 
-        triplets = [[query, s, d] for s, d in zip(similars, dissimilars)]
-
-        # get two positive triplets for each added link
-        for k, v in added.items():
-            s = positives.index((k, v))
-            if s == len(positives) - 1:
-                continue
-            dissimilars = np.random.randint(s + 1, len(positives), 2)
-            for d in dissimilars:
-                triplets.append([query, s, d])
-
-    if len(positives) > 0:
-        # get two negative triplets for each removed link
-        for k in removed.keys():
-            similars = np.random.randint(0, len(positives), 2)
-            for s in similars:
-                triplets.append([query, s, k])
+    # get multiply triplets for each sample (similar and different)
+    for s in similars:
+        diff = np.random.choice(differents, multiply, replace=False)
+        for d in diff:
+            triplets.append((query, s, d))
+    for d in differents:
+        sim = np.random.choice(similars, multiply, replace=False)
+        for s in sim:
+            triplets.append((query, s, d))
 
     return np.stack(triplets)
 
@@ -237,6 +214,9 @@ def compute_graph(current_graph=[]):
         print('Embedding range: x [{}, {}], y [{}, {}]'.format(prev_embedding[0].min(), prev_embedding[0].max(),
                                                                prev_embedding[1].min(), prev_embedding[1].max()))
         return graph
+
+    new_triplets = current_graph['tripel']
+    current_graph = current_graph['nodes']
 
     print('update graph')
     # modify current graph such that keys are ints and links keys are ints
@@ -278,20 +258,15 @@ def compute_graph(current_graph=[]):
         print('added {} position constraints'.format(len(pos_constraints)))
 
     # compute triplets from user modifications
-    n_triplets = 0
-    for idx in modified_links:
-        prev_links = graph[idx]['links']
-        curr_links = current_graph[idx]['links']
+    if len(new_triplets) > 0:
+        if (triplets[0] == np.zeros((1, 3))).all():  # delete dummy
+            triplets = np.delete(triplets, 0, axis=0)
 
-        if len(curr_links) > 0:
-            trplts = get_triplets(idx, prev_links, curr_links)
-            n_triplets += len(trplts)
+        for query in new_triplets.keys():
+            trplts = get_triplets(query, new_triplets[query]['p'], new_triplets[query]['n'])
             triplets = np.vstack((triplets, trplts))
-            if (triplets[0] == np.zeros((1, 3))).all():     # delete dummy
-                triplets = np.delete(triplets, 0, axis=0)
-        # update links in graph
-        graph[idx]['links'] = current_graph[idx]['links']
-    print('added {} triplets'.format(n_triplets))
+
+        print('added {} triplets, total: {}'.format(len(trplts), len(triplets)))
 
 
     # compute embedding with current embedding as initialization

@@ -179,7 +179,7 @@ def get_triplets(query, similars, differents, multiply=1, seed=123):
         for s in sim:
             triplets.append((query, s, d))
 
-    return np.stack(triplets)
+    return np.stack(triplets).astype(np.long)
 
 
 def get_pos_constraints(indices, embedding, k=10):
@@ -267,7 +267,6 @@ def compute_graph(current_graph=[]):
             triplets = np.vstack((triplets, trplts))
 
         print('added {} triplets, total: {}'.format(len(trplts), len(triplets)))
-
 
     # compute embedding with current embedding as initialization
     kwargs['initial_Y'] = current_embedding

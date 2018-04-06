@@ -61,26 +61,33 @@ colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
           'lightseagreen', 'dodgerblue', 'coral', 'orange', 'mediumpurple']
 
 print('loading testset...')
-testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
 # testset = pickle.load(open('../wikiart/style_testset_easy.pkl', 'rb'))
-# testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
+testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/style_testset_small.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/portrait_subset.pkl', 'rb'))
+
 
 print('done.')
 ids = testset['id']
 labels = testset['label']
+# labels = [None] * len(ids)
+
 # label_to_int = {'cubism': 0, 'impressionism': 1, 'surrealism': 2}
 # clabels = [colors[label_to_int[l]] for l in labels]
 
 features = testset['features']
+# with open('../wikiart/portrait_subset_vgg16.pkl', 'rb') as infile:
+#     features = pickle.load(infile)
+
 
 # sample test triplets
 test_triplets = generate_triplets(labels, n=50)
 
-n_neighbors = 10
+n_neighbors = 1
 embedding_func = snack_embed_mod
 kwargs = {'contrib_cost_tsne': 100, 'contrib_cost_triplets': 0.1, 'contrib_cost_position': 0.1,
           'perplexity': 30, 'theta': 0.5, 'no_dims': 2}
-
 
 # get nearest neighbors once
 index = faiss.IndexFlatL2(np.stack(features).shape[1])   # build the index
@@ -182,6 +189,32 @@ def get_triplets(query, similars, differents, multiply=1, seed=123):
     return np.stack(triplets).astype(np.long)
 
 
+def generate_triplets(n=100, seed=123):
+    global labels
+    np.random.seed(seed)
+    label_names = set(labels)
+    labels = np.array(labels)
+    n_per_class = np.floor(float(n) / len(label_names))
+    triplets = []
+    for i, l in enumerate(label_names):
+        similars = np.where(labels == l)[0]
+        differents = np.where(labels != l)[0]
+        while len(triplets) < (i+1) * n_per_class:
+            a, s = np.random.choice(similars, 2, replace=False)
+            d = np.random.choice(differents)
+            if (a, s, d) not in triplets:
+                triplets.append((a, s, d))
+    # fill up rest of triplets with random choices
+    while len(triplets) < n:
+        l = np.random.choice(list(label_names))
+        a, s = np.random.choice(np.where(labels == l)[0], 2, replace=False)
+        d = np.random.choice(np.where(labels != l)[0])
+        if (a, s, d) not in triplets:
+            triplets.append((a, s, d))
+
+    return np.stack(triplets).astype(long)
+
+
 def get_pos_constraints(indices, embedding, k=10):
     # compute k nearest neighbors in embedding
     index = faiss.IndexFlatL2(embedding.shape[1])  # build the index
@@ -258,15 +291,18 @@ def compute_graph(current_graph=[]):
         print('added {} position constraints'.format(len(pos_constraints)))
 
     # compute triplets from user modifications
-    if len(new_triplets) > 0:
-        if (triplets[0] == np.zeros((1, 3))).all():  # delete dummy
-            triplets = np.delete(triplets, 0, axis=0)
+    # if len(new_triplets) > 0:
+    #     if (triplets[0] == np.zeros((1, 3))).all():  # delete dummy
+    #         triplets = np.delete(triplets, 0, axis=0)
+    #
+    #     for query in new_triplets.keys():
+    #         trplts = get_triplets(query, new_triplets[query]['p'], new_triplets[query]['n'])
+    #         triplets = np.vstack((triplets, trplts))
+    #
+    #     print('added {} triplets, total: {}'.format(len(trplts), len(triplets)))
 
-        for query in new_triplets.keys():
-            trplts = get_triplets(query, new_triplets[query]['p'], new_triplets[query]['n'])
-            triplets = np.vstack((triplets, trplts))
-
-        print('added {} triplets, total: {}'.format(len(trplts), len(triplets)))
+    # generate triplets
+    triplets = generate_triplets(n=400)
 
     # compute embedding with current embedding as initialization
     kwargs['initial_Y'] = current_embedding

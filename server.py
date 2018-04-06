@@ -67,7 +67,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # make json
             data = json.dumps(data).encode()
-            print(data)
             self.wfile.write(data)  #body zurueckschicken
 
 

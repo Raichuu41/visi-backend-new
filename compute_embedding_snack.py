@@ -6,6 +6,8 @@ import sys
 import numpy as np
 import pickle
 from math import sqrt
+sys.path.append('/export/home/kschwarz/Documents/Masters/FullPipeline/')
+from dataset import CUBDataset
 
 
 def GTE(embedding, triplets):
@@ -31,6 +33,8 @@ def generate_triplets(labels, n=10):
     triplets = []
     for i, l in enumerate(label_names):
         similars = np.where(labels == l)[0]
+        if len(similars) == 0:
+            continue
         differents = np.where(labels != l)[0]
         while len(triplets) < (i+1) * n_per_class:
             a, s = np.random.choice(similars, 2, replace=False)
@@ -40,6 +44,8 @@ def generate_triplets(labels, n=10):
     # fill up rest of triplets with random choices
     while len(triplets) < n:
         l = np.random.choice(list(label_names))
+        if len(np.where(labels == l)[0]) < 2:
+            continue
         a, s = np.random.choice(np.where(labels == l)[0], 2, replace=False)
         d = np.random.choice(np.where(labels != l)[0])
         if (a, s, d) not in triplets:
@@ -56,6 +62,7 @@ import faiss
 import matplotlib.pyplot as plt
 plt.ion()
 
+n_images = 3000
 
 colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
           'lightseagreen', 'dodgerblue', 'coral', 'orange', 'mediumpurple']
@@ -63,26 +70,32 @@ colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
 print('loading testset...')
 # testset = pickle.load(open('../wikiart/style_testset_tiny.pkl', 'rb'))
 # testset = pickle.load(open('../wikiart/style_testset_easy.pkl', 'rb'))
-testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
+# testset = pickle.load(open('../wikiart/artist_testset.pkl', 'rb'))
 # testset = pickle.load(open('../wikiart/style_testset_small.pkl', 'rb'))
 # testset = pickle.load(open('../wikiart/portrait_subset.pkl', 'rb'))
-
-
+testset = CUBDataset(data_dir='/export/home/kschwarz/Documents/Data/CUB_200_2011', label_dict=True, train=False)
+testset.image_names = testset.image_names[:n_images]
 print('done.')
-ids = testset['id']
-labels = testset['label']
-# labels = [None] * len(ids)
+
+# ids = testset['id']
+ids = [name.split('/')[1].replace('.jpg', '') for name in testset.image_names]
+# labels = testset['label']
+labels = [None] * len(ids)
+# labels = testset.label_dict.values()
 
 # label_to_int = {'cubism': 0, 'impressionism': 1, 'surrealism': 2}
 # clabels = [colors[label_to_int[l]] for l in labels]
 
-features = testset['features']
+# features = testset['features']
 # with open('../wikiart/portrait_subset_vgg16.pkl', 'rb') as infile:
 #     features = pickle.load(infile)
-
+import h5py
+with h5py.File('../FullPipeline/runs/CUB_VGG_logfile_standard.hdf5', 'r') as infile:
+    features = infile['features/0'].value[:n_images]
 
 # sample test triplets
-test_triplets = generate_triplets(labels, n=50)
+test_triplets = generate_triplets(testset.label_dict.values()[:n_images], n=50)
+# test_triplets = generate_triplets(labels, n=50)
 
 n_neighbors = 1
 embedding_func = snack_embed_mod
@@ -291,18 +304,16 @@ def compute_graph(current_graph=[]):
         print('added {} position constraints'.format(len(pos_constraints)))
 
     # compute triplets from user modifications
-    # if len(new_triplets) > 0:
-    #     if (triplets[0] == np.zeros((1, 3))).all():  # delete dummy
-    #         triplets = np.delete(triplets, 0, axis=0)
-    #
-    #     for query in new_triplets.keys():
-    #         trplts = get_triplets(query, new_triplets[query]['p'], new_triplets[query]['n'])
-    #         triplets = np.vstack((triplets, trplts))
-    #
-    #     print('added {} triplets, total: {}'.format(len(trplts), len(triplets)))
+    if len(new_triplets) > 0:
+        if (triplets[0] == np.zeros((1, 3))).all():  # delete dummy
+            triplets = np.delete(triplets, 0, axis=0)
 
-    # generate triplets
-    triplets = generate_triplets(n=400)
+        for query in new_triplets.keys():
+            trplts = get_triplets(query, new_triplets[query]['p'], new_triplets[query]['n'])
+            triplets = np.vstack((triplets, trplts))
+
+        print('added {} triplets, total: {}'.format(len(trplts), len(triplets)))
+
 
     # compute embedding with current embedding as initialization
     kwargs['initial_Y'] = current_embedding
@@ -329,3 +340,8 @@ def compute_graph(current_graph=[]):
 
     return graph
 
+
+# write graph to txt file
+graph = initialise_graph()
+with open('large_graph.txt', 'wb') as outfile:
+    outfile.write(str(graph))

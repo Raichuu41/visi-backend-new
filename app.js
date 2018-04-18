@@ -79,7 +79,8 @@ let imgPath = ""
 if (process.env.NODE_ENV === 'development') {
     imgPath = `${__dirname}/images/`;
 } else {
-    imgPath = `/export/home/asanakoy/workspace/wikiart/images/`;
+//    imgPath = `/export/home/asanakoy/workspace/wikiart/images/`;
+    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
 }
 
 if(!fs.existsSync(imgPath)) new Error(`IMAGE PATH NOT EXISTS - ${imgPath}`)

@@ -62,7 +62,7 @@ import faiss
 import matplotlib.pyplot as plt
 plt.ion()
 
-n_images = 3000
+n_images = -1
 
 colors = ['magenta', 'cyan', 'lime', 'indigo', 'y',
           'lightseagreen', 'dodgerblue', 'coral', 'orange', 'mediumpurple']
@@ -114,6 +114,10 @@ position_constraints = np.zeros((1, 3))
 graph = None
 
 
+if __name__ == '__main__':              # dummy main to initialise global variables
+    print('global variables for embedding computation set.')
+
+
 def create_links(neighbors, distances, strenght_range=(0, 1)):
     # depending on nn layout remove samples themselves from nn list
     if neighbors[0, 0] == 0:        # first column contains sample itself
@@ -148,7 +152,7 @@ def create_nodes(names, positions, labels=None):
 
     nodes = {}
     for i, (name, label, (x, y)) in enumerate(zip(names, labels, positions)):
-        nodes[i] = {'name': name, 'label': label, 'x': x, 'y': y, 'links': links[i]}
+        nodes[i] = {'name': name, 'label': label, 'labels':[], 'x': x, 'y': y, 'links': links[i]}
     return nodes
 
 
@@ -202,30 +206,30 @@ def get_triplets(query, similars, differents, multiply=1, seed=123):
     return np.stack(triplets).astype(np.long)
 
 
-def generate_triplets(n=100, seed=123):
-    global labels
-    np.random.seed(seed)
-    label_names = set(labels)
-    labels = np.array(labels)
-    n_per_class = np.floor(float(n) / len(label_names))
-    triplets = []
-    for i, l in enumerate(label_names):
-        similars = np.where(labels == l)[0]
-        differents = np.where(labels != l)[0]
-        while len(triplets) < (i+1) * n_per_class:
-            a, s = np.random.choice(similars, 2, replace=False)
-            d = np.random.choice(differents)
-            if (a, s, d) not in triplets:
-                triplets.append((a, s, d))
-    # fill up rest of triplets with random choices
-    while len(triplets) < n:
-        l = np.random.choice(list(label_names))
-        a, s = np.random.choice(np.where(labels == l)[0], 2, replace=False)
-        d = np.random.choice(np.where(labels != l)[0])
-        if (a, s, d) not in triplets:
-            triplets.append((a, s, d))
-
-    return np.stack(triplets).astype(long)
+# def generate_triplets(n=100, seed=123):
+#     global labels
+#     np.random.seed(seed)
+#     label_names = set(labels)
+#     labels = np.array(labels)
+#     n_per_class = np.floor(float(n) / len(label_names))
+#     triplets = []
+#     for i, l in enumerate(label_names):
+#         similars = np.where(labels == l)[0]
+#         differents = np.where(labels != l)[0]
+#         while len(triplets) < (i+1) * n_per_class:
+#             a, s = np.random.choice(similars, 2, replace=False)
+#             d = np.random.choice(differents)
+#             if (a, s, d) not in triplets:
+#                 triplets.append((a, s, d))
+#     # fill up rest of triplets with random choices
+#     while len(triplets) < n:
+#         l = np.random.choice(list(label_names))
+#         a, s = np.random.choice(np.where(labels == l)[0], 2, replace=False)
+#         d = np.random.choice(np.where(labels != l)[0])
+#         if (a, s, d) not in triplets:
+#             triplets.append((a, s, d))
+#
+#     return np.stack(triplets).astype(long)
 
 
 def get_pos_constraints(indices, embedding, k=10):
@@ -341,7 +345,7 @@ def compute_graph(current_graph=[]):
     return graph
 
 
-# write graph to txt file
-graph = initialise_graph()
-with open('large_graph.txt', 'wb') as outfile:
-    outfile.write(str(graph))
+# # write graph to txt file
+# graph = initialise_graph()
+# with open('graph_CUB_testset.txt', 'wb') as outfile:
+#     outfile.write(str(graph))

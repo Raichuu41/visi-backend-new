@@ -238,19 +238,39 @@ def cluster_embedding(embedding, n_clusters=10, seed=123):
     return np.array(label)
 
 
-def make_chunks(clusters, chunk_size, chunk_size_relevant=None, relevant_clusters=[]):
-    if chunk_size_relevant is None:
-        chunk_size_relevant = 2 * chunk_size
-
+def _random_chunks(clusters, chunk_size):
     chunks = -1 * np.ones(len(clusters), dtype=int)
+
     for c in clusters:
-        n = chunk_size_relevant if c in relevant_clusters else chunk_size
         idcs = np.where(clusters == c)[0]
         if len(idcs) < chunk_size:
             warnings.warn('Cluster size too small, please use less clusters.', RuntimeWarning)
 
-        idcs = np.random.choice(idcs, min(len(idcs), n), replace=False)
+        idcs = np.random.choice(idcs, min(len(idcs), chunk_size), replace=False)
         chunks[idcs] = c
+
+    return chunks
+
+
+def make_chunks(embedding, moved, clusters, chunk_size, n_neighbors=5):
+    chunks = _random_chunks(clusters, chunk_size)       # get some random chunks for all clusters
+
+    # compute embedding nearest neighbors with faiss
+    index = faiss.IndexFlatL2(2)  # build the index
+    index.add(np.stack(embedding).astype('float32'))  # add vectors to the index
+    knn_distances, knn_indices = index.search(np.stack(embedding[moved]).astype('float32'), len(embedding))     # TODO: find better margin than taking all neighbors
+
+    for i, moved_idx in enumerate(moved):
+        c = clusters[moved_idx]
+        c_idcs = np.where(clusters == c)[0]      # find cluster
+        n = min(len(c_idcs), n_neighbors)
+        idcs = []
+        for idx in knn_indices[i]:
+            if idx in c_idcs:
+                idcs.append(idx)
+            if len(idcs) == n:
+                break
+        chunks[np.array(idcs)] = c
 
     return chunks
 
@@ -292,13 +312,9 @@ def compute_graph(current_graph=[]):
 
     if len(moved) > 0:
         # sample chunks from clusters
-        relevant_clusters = set(clusters[moved])        # here change happened, so sample more
-
         chunk_size = int(d / 4.99)      # minimal chunk size
-        chunk_size_relevant = 2 * chunk_size    # sample more from relevant clusters
 
-        chunks = make_chunks(clusters, chunk_size=chunk_size,
-                             chunk_size_relevant=chunk_size_relevant, relevant_clusters=relevant_clusters)
+        chunks = make_chunks(current_embedding, moved, clusters, chunk_size, n_neighbors=5)
         # transform features
         fts_reduced_rca = RCA().fit_transform(fts_reduced, chunks)
         if np.isfinite(fts_reduced_rca).all():

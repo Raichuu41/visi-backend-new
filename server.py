@@ -10,7 +10,7 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from RCA_embedding import compute_graph
+from compute_embedding_snack import compute_graph
 """
 def format_string(graph):
     s = str(graph)

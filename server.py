@@ -86,10 +86,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(data)
 
             # Katjas code goes here
-            p, n = katja_function(data.p, data.n)
+            p, n = learn_svm(data['p'], data['n'], grid_search=True)
 
             # make json
-            data = json.dumps({p: p, n: n}).encode()
+            data = json.dumps({'p': p, 'n': n}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
 

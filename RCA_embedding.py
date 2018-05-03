@@ -102,12 +102,12 @@ d = 128
 print('Reduce features to {} dimensions...'.format(d))
 tic = time()
 pca = PCA(n_components=d)
-fts_reduced = pca.fit_transform(features)
+features = pca.fit_transform(features)
 toc = time()
 print('Done. ({:2.0f}min {:2.1f}s)'.format((toc-tic) / 60, (toc-tic) % 60))
-if fts_reduced.shape[1] != d:
-    warnings.warn('Too little number of features for d={} - set d to {}'.format(d, fts_reduced.shape[1]), Warning)
-    d = fts_reduced.shape[1]
+if features.shape[1] != d:
+    warnings.warn('Too little number of features for d={} - set d to {}'.format(d, features.shape[1]), Warning)
+    d = features.shape[1]
 
 # some more global variables
 n_clusters = 10
@@ -127,7 +127,7 @@ if __name__ == '__main__':              # dummy main to initialise global variab
 
 def create_graph(names, positions, label=None, labels=None):
     """Compute nearest neighbor graph with inverse distances used as edge weights ('link strength')."""
-    global fts_reduced, n_neighbors, d
+    global features, n_neighbors, d
     print('Compute nearest neighbor graph...')
     tic = time()
 
@@ -183,7 +183,7 @@ def create_graph(names, positions, label=None, labels=None):
 
 
 def compute_embedding():
-    global fts_reduced, embedding_func, prev_embedding
+    global features, embedding_func, prev_embedding
     """Standard embedding of reduced features."""
     print('Compute embedding...')
     tic = time()
@@ -278,7 +278,7 @@ def make_chunks(embedding, moved, clusters, chunk_size, n_neighbors=5):
 def compute_graph(current_graph=[]):
     global image_names, labels, n_clusters
     global graph, position_constraints, prev_embedding
-    global d, fts_reduced
+    global d, features
     if len(current_graph) == 0 or prev_embedding is None:
         print('Initialise graph...')
         tic = time()

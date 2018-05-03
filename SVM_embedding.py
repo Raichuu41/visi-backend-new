@@ -45,8 +45,8 @@ def create_genre_dataset(label='styles'):
         assert label in data.keys(), 'unknown label {}'.format(label)
         second_label = data[label]
 
-    assert (image_names == ids).all()       # ensure labelling is correct
-    del data, ids       # discard duplicate data
+    # assert (image_names == ids).all()       # ensure labelling is correct
+    # del data, ids       # discard duplicate data
 
     # make a small subset
 
@@ -78,8 +78,6 @@ def create_genre_dataset(label='styles'):
 
     image_names = image_names[selection_idcs]
     # features = features[selection_idcs]
-    with open('../wikiart/genre_set_inception3.pkl', 'rb') as f:
-
     with open('../wikiart/genre_set_artist.pkl', 'rb') as f:
         data = pickle.load(f)
         features = data['features']
@@ -123,7 +121,7 @@ if __name__ == '__main__':              # dummy main to initialise global variab
 
 def create_graph(names, positions, label=None, labels=None):
     """Compute nearest neighbor graph with inverse distances used as edge weights ('link strength')."""
-    global fts_reduced, n_neighbors, d
+    global features, n_neighbors
     print('Compute nearest neighbor graph...')
     tic = time()
 
@@ -152,9 +150,9 @@ def create_graph(names, positions, label=None, labels=None):
         return links
 
     # compute nearest neighbors and distances with faiss library
-    index = faiss.IndexFlatL2(d)   # build the index
-    index.add(np.stack(fts_reduced).astype('float32'))                  # add vectors to the index
-    knn_distances, knn_indices = index.search(np.stack(fts_reduced).astype('float32'), n_neighbors+1)      # add 1 because neighbors include sample itself for k=0
+    index = faiss.IndexFlatL2(features.shape[1])   # build the index
+    index.add(np.stack(features).astype('float32'))                  # add vectors to the index
+    knn_distances, knn_indices = index.search(np.stack(features).astype('float32'), n_neighbors + 1)      # add 1 because neighbors include sample itself for k=0
 
     # get links between the nodes
     # invert strength range because distances are used as measure and we want distant points to be weakly linked
@@ -179,18 +177,18 @@ def create_graph(names, positions, label=None, labels=None):
 
 
 def compute_embedding():
-    global fts_reduced, embedding_func, prev_embedding
+    global features, embedding_func, prev_embedding
     """Standard embedding of reduced features."""
     print('Compute embedding...')
     tic = time()
 
     if position_constraints is None:
-        embedding = embedding_func(np.stack(fts_reduced).astype(np.double),
+        embedding = embedding_func(np.stack(features).astype(np.double),
                                    triplets=np.zeros((1, 3), dtype=np.long),
                                    position_constraints=np.zeros((1, 3)),
                                    **kwargs)
     else:
-        embedding = embedding_func(np.stack(fts_reduced).astype(np.double),
+        embedding = embedding_func(np.stack(features).astype(np.double),
                                    triplets=np.zeros((1, 3), dtype=np.long),
                                    position_constraints=position_constraints,
                                    **kwargs)
@@ -237,7 +235,7 @@ def cluster_embedding(embedding, n_clusters=10, seed=123):
 def compute_graph(current_graph=[]):
     global image_names, labels, n_clusters
     global graph, position_constraints, prev_embedding
-    global d, fts_reduced
+    global features
     if len(current_graph) == 0 or prev_embedding is None:
         print('Initialise graph...')
         tic = time()
@@ -283,6 +281,10 @@ def compute_graph(current_graph=[]):
 
 def learn_svm(positives, negatives, grid_search=False):
     global features
+    print('positives:')
+    print(positives)
+    print('negatives:')
+    print(negatives)
     n_positives = len(positives)
     n_negatives = len(negatives)
 
@@ -309,19 +311,24 @@ def learn_svm(positives, negatives, grid_search=False):
 
     print('Predict class membership for whole dataset...')
     predicted_labels = clf.predict(features)
-    d_decision_boundary = np.abs(clf.decision_function(features))
+    d_decision_boundary = clf.decision_function(features)
+    # save prediction and distance to decision boundary
+    with open('_svm_prediction.pkl', 'wb') as f:
+        pickle.dump({'labels': predicted_labels, 'distance': d_decision_boundary}, f)
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
 
+    # do not use training data
+    predicted_labels = np.delete(predicted_labels, np.concatenate([idcs_positives, idcs_negatives]))
+    d_decision_boundary = np.delete(d_decision_boundary, np.concatenate([idcs_positives, idcs_negatives]))
+
     # sort by distance to decision boundary
-    sort_idcs = np.argsort(d_decision_boundary)
+    sort_idcs = np.argsort(np.abs(d_decision_boundary))         # use absolute distances
     predicted_labels = predicted_labels[sort_idcs]
 
     pred_pos = sort_idcs[predicted_labels == 1]
     pred_neg = sort_idcs[predicted_labels == 0]
 
-    assert np.concatenate([pred_pos, pred_neg]).sort() == range(len(features)), 'Some samples were not identified!'
-
-    return pred_pos, pred_neg
+    return list(pred_pos[:10]), list(pred_neg[:10])
 
 
 

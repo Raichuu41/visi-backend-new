@@ -10,7 +10,7 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from SVM_embedding import compute_graph, learn_svm
+from SVM_embedding_local import compute_graph, learn_svm, triplet_constraints_from_svm, local_embedding
 """
 def format_string(graph):
     s = str(graph)
@@ -69,7 +69,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             data = json.dumps(data).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-        if(self.path == "/trainsvm"):
+        if(self.path == "/trainSvm"):
             print("post /trainsvm")
             ### POST Request Header ###
             self.send_response(200)
@@ -109,7 +109,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #print(data)
 
             # Katjas code goes here
-            p, n = katja_function(data.p, data.n)
+            # triplet_constraints_from_svm()
+            local_embedding()
 
             # make json
             #data = json.dumps({p: p, n: n}).encode()

@@ -276,6 +276,9 @@ def compute_graph(current_graph=[]):
                                                                prev_embedding[1].min(), prev_embedding[1].max()))
         return graph
 
+    # DUMMY EDIT!!!
+    return create_graph(image_names, prev_embedding, labels=labels)
+
     print('Update graph...')
     tic = time()
 
@@ -453,7 +456,7 @@ def generate_triplets(positives, negatives, N, n_pos_pa=1, n_neg_pp=1, seed=123)
 def triplet_constraints_from_svm():
     print('Generate triplet constraints from SVM cluster...')
     tic = time()
-    global svm_cluster, triplet_constraints, triplet_weights, features
+    global svm_cluster, features
 
     # predicted data
     n_constraints = 2000
@@ -496,22 +499,82 @@ def triplet_constraints_from_svm():
     print('WEIGHTS: min: {}, max: {}, mean: {}'.format(min(triplet_weights), max(triplet_weights),
                                                        triplet_weights.mean()))
 
-    if triplet_constraints is None:
-        triplet_constraints = np.array(constraints, dtype=long)
-    else:
-        triplet_constraints = np.append(triplet_constraints, constraints, axis=0)
+    triplet_constraints = np.array(constraints, dtype=long)
+
 
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
     print('Created {} triplet constraints.'.format(len(constraints)))
 
+    return triplet_constraints, triplet_weights
 
 
+def get_neighborhood(data, sample_idcs, buffer=0., use_faiss=True):
+    """Determine all data points within the sphere in data space defined by the samples.
+    Args:
+        data (np.ndarray): NxD array containing N D-dimensional data vectors
+        sample_idcs (iterable ints): indices of the data points that define the sphere
+        buffer (optional, float): fraction of radius which to additionally include in sphere
+        use_faiss (optional, bool): whether to use faiss library for distance calculation
+        """
+    # get center of samples
+    center = np.mean(data[sample_idcs], axis=0, keepdims=True)
+
+    if use_faiss:
+        index = faiss.IndexFlatL2(data.shape[1])  # build the index
+        index.add(data.astype('float32'))  # add vectors to the index
+        distances, indices = index.search(center.astype('float32'), len(data))
+        distances, indices = distances[0], indices[0]
+
+        radius = max(distances)
+        radius += buffer * radius
+
+        local_idcs = []
+        for d, i in zip(distances, indices):
+            if d > radius:
+                break
+            local_idcs.append(i)
+        local_idcs = np.array(local_idcs)
+
+    else:
+        distances = np.array([euclidean(d, center) for d in data])
+
+        radius = max(distances)
+        radius += buffer * radius
+
+        local_idcs = np.where(distances <= radius)[0]
+
+    return local_idcs, center, radius
 
 
+def local_embedding(buffer=0.):
+    """Compute local low dimensional embedding.
+    Args:
+        buffer: fraction of radius from which to choose fix points outside of data sphere
+        """
+    global prev_embedding, svm_cluster, features, kwargs
+    triplet_constraints, triplet_weights = triplet_constraints_from_svm()
+    sample_idcs = np.concatenate([svm_cluster['labeled']['p'], svm_cluster['labeled']['n']])
+    local_idcs, _, _ = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
+    local_idcs_soft, _, _ = get_neighborhood(prev_embedding, sample_idcs, buffer=buffer, use_faiss=True)
 
+    # convert triplet indices to local selection
+    local_idx_to_idx = {li: i for i, li in enumerate(local_idcs_soft)}
+    for i, t in enumerate(triplet_constraints):
+        for j in range(triplet_constraints.shape[1]):
+            triplet_constraints[i, j] = local_idx_to_idx[t[j]]
 
+    # get soft margin points and use them as fix points to compute embedding
+    fix_points = set(local_idcs_soft).difference(local_idcs)
 
+    embedding = embedding_func(np.stack(features).astype(np.double)[local_idcs_soft],
+                               triplets=triplet_constraints,
+                               weights_triplets=triplet_weights,
+                               position_constraints=np.zeros((1, 3)),
+                               fix_points=fix_points, initial_Y=prev_embedding[local_idcs_soft],
+                               **kwargs)
 
+    # update embedding
+    prev_embedding[local_idcs_soft] = embedding
 
 

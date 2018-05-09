@@ -86,7 +86,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(data)
 
             # Katjas code goes here
-            p, n = learn_svm(data['p'], data['n'], data['counter'])
+            p, n = learn_svm(data['p'], data['n'], data['count'])
 
             # make json
             data = json.dumps({'p': p, 'n': n}).encode()
@@ -110,7 +110,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # Katjas code goes here
             # triplet_constraints_from_svm()
-            local_embedding()
+            local_embedding(buffer=0.2)
 
             # make json
             #data = json.dumps({p: p, n: n}).encode()

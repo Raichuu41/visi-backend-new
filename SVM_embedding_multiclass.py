@@ -140,8 +140,9 @@ local_idcs = None
 # SVM definition
 parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
               'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
-clf = GridSearchCV(SVC(), parameters)
-svm_label = -2
+svm = SVC(decision_function_shape='ovr')
+clf = GridSearchCV(svm, parameters)
+svm_label = 0
 
 
 if __name__ == '__main__':              # dummy main to initialise global variables
@@ -328,6 +329,9 @@ def compute_graph(current_graph=[]):
 
 def learn_svm(positives, negatives, counter):
     global features, svm_cluster, local_idcs, clf, svm_label
+    clf_pretrained = counter == 0 and hasattr(clf, 'best_estimator_')
+    if clf_pretrained:          # new labels for new iterations
+        svm_label += 2
     n_positives = len(positives)
     n_negatives = len(negatives)
 
@@ -343,22 +347,28 @@ def learn_svm(positives, negatives, counter):
     positions = np.array([p for p in prev_embedding[idcs_train]])
     center = np.mean(positions, axis=0)
     d = np.array([euclidean(p, center) for p in positions])
-    radius = max(d) + 0.1 * max(d)
+    radius = max(d) + 0.05 * max(d)
     print('selection radius: {}'.format(radius))
 
     train_data = np.concatenate([features[idcs_train]])
-    train_labels = np.concatenate([svm_label * np.ones(n_positives), (svm_label + 1) * np.ones(n_negatives)])        # new labels for new iterations
+    train_labels = np.concatenate([(svm_label + 1) * np.ones(n_positives), svm_label * np.ones(n_negatives)])        # new labels for new iterations
 
     # TODO: DEFINE HOW TO DEAL WITH MULTI-LABELS
-    if counter == 0:
-        svm_label += 2  # new labels for new iterations
-        if hasattr(clf.best_estimator_, 'support_'):  # load old training data if existent
-            print('load previous svm training data with labels {} - now start labelling from {}'
-                  .format(range(len(clf.best_estimator_.n_support_)), svm_label))
-            assert len(clf.best_estimator_.n_support_) == svm_label, 'counter in labels went wrong somewhere'
-            train_data.append(clf.best_estimator_.support_vectors_)
-            for l, n in enumerate(clf.best_estimator_.n_support_):
-                train_labels.append(l * np.ones(n))
+    if clf_pretrained:         # load old training data if existent
+        print('load previous svm training data with labels {} - now start labelling from {}'
+              .format(range(len(clf.best_estimator_.n_support_)), svm_label))
+        assert len(clf.best_estimator_.n_support_) == svm_label, 'counter in labels went wrong somewhere'
+        train_data = np.append(train_data, clf.best_estimator_.support_vectors_, axis=0)
+        for l, n in enumerate(clf.best_estimator_.n_support_):
+            train_labels = np.append(train_labels, l * np.ones(n))
+        # update parameter grid search
+        class_weights = []
+        for search_params in [(1, 0.2), (1, 1), (1, 5)]:
+            weight_params = clf.best_params_['class_weight'].copy()
+            weight_params[svm_label] = search_params[0]         # negatives
+            weight_params[svm_label + 1] = search_params[1]     # positives
+            class_weights.append(weight_params)
+        clf.param_grid['class_weight'] = class_weights
 
     # TODO: use CURRENT embedding
     d = np.array([euclidean(p, center) for p in prev_embedding])
@@ -374,26 +384,40 @@ def learn_svm(positives, negatives, counter):
 
     print('Predict class membership for whole dataset...')
     predicted_labels = clf.predict(features)
-    d_decision_boundary = clf.decision_function(features)
+    # use ovr decision boundary
+    clf.best_estimator_.decision_function_shape = 'ovr'
+    decision_boundary_score = clf.decision_function(features)
+
     # save test prediction and distance to decision boundary
     with open('_svm_prediction.pkl', 'wb') as f:
-        pickle.dump({'labels': predicted_labels, 'distance': d_decision_boundary,
+        pickle.dump({'labels': predicted_labels, 'distance': decision_boundary_score,
                      'image_names': image_names, 'local_indices': local_idcs,
                      'idcs_positives_train': idcs_positives,
                      'idcs_negatives_train': idcs_negatives}, f)
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
 
+    # use ovo decision boundary and only use separation between new classes
+    clf.best_estimator_.decision_function_shape = 'ovo'
+    d_decision_boundary = clf.decision_function(features)
+    if d_decision_boundary.ndim > 1:
+        d_decision_boundary = d_decision_boundary[:, -1]    # -1 only consideres border between the two new classes
+
     # save local cluster
-    svm_cluster = {'positives': np.array([p for p in np.where(predicted_labels == 1)[0] if p in local_idcs]),
-                   'negatives': np.array([n for n in np.where(predicted_labels != 1)[0] if n in local_idcs]),
+    svm_cluster = {'positives': np.array([p for p in np.where(predicted_labels == svm_label + 1)[0]
+                                          if p in local_idcs]),
+                   'negatives': np.array([n for n in np.where(predicted_labels != svm_label + 1)[0]
+                                          if n in local_idcs]),
                    'distance': {i: d for i, d in enumerate(d_decision_boundary) if i in local_idcs},
                    'labeled': {'p': idcs_positives, 'n': idcs_negatives}}
     # do not use training data
     sort_idcs = np.argsort(np.abs(d_decision_boundary))         # use absolute distances
     predicted_labels = predicted_labels[sort_idcs]
 
-    pred_pos = sort_idcs[predicted_labels == 1]
-    pred_neg = sort_idcs[predicted_labels == 0]
+
+    pred_pos = sort_idcs[predicted_labels == (svm_label + 1)]
+    pred_neg = sort_idcs[predicted_labels != (svm_label + 1)]
+
+    # TODO: BRUTE FORCE RIGHT LABELS FOR TRAINING DATA
 
     # don't return training data
     pred_pos = [p for p in pred_pos if p not in idcs_train and p in local_idcs]
@@ -553,7 +577,7 @@ def get_neighborhood(data, sample_idcs, buffer=0., use_faiss=True):
         distances, indices = index.search(center.astype('float32'), len(data))
         distances, indices = np.sqrt(distances[0]), indices[0]          # faiss returns squared distances
 
-        radius = max(distances)
+        radius = max([d for d, i in zip(distances, indices) if i in sample_idcs])
         radius += buffer * radius
 
         local_idcs = []
@@ -566,7 +590,7 @@ def get_neighborhood(data, sample_idcs, buffer=0., use_faiss=True):
     else:
         distances = np.array([euclidean(d, center) for d in data])
 
-        radius = max(distances)
+        radius = max(distances[sample_idcs])
         radius += buffer * radius
 
         local_idcs = np.where(distances <= radius)[0]
@@ -579,29 +603,55 @@ def local_embedding(buffer=0.):
     Args:
         buffer: fraction of radius from which to choose fix points outside of data sphere
         """
-    global prev_embedding, svm_cluster, features, kwargs
-    triplet_constraints, triplet_weights = triplet_constraints_from_svm()
+    global prev_embedding, svm_cluster, features, kwargs, triplet_constraints, triplet_weights
+    tc, tw = triplet_constraints_from_svm()
+    if triplet_constraints is None:
+        triplet_constraints = tc
+        triplet_weights = tw
+    else:
+        triplet_constraints = np.append(triplet_constraints, tc, axis=0)
+        triplet_weights = np.mean(np.stack([triplet_weights, tw], axis=1), axis=1)        # TODO: BETTER SYSTEM FOR COMBINING WEIGHTS
+
     sample_idcs = np.concatenate([svm_cluster['labeled']['p'], svm_cluster['labeled']['n']])
-    local_idcs, _, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
+    local_idcs, center, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=False)
     local_idcs_soft, _, _ = get_neighborhood(prev_embedding, sample_idcs, buffer=buffer, use_faiss=True)
+
+    local_triplets = []
+    for t in triplet_constraints:
+        for i in range(triplet_constraints.shape[1]):
+            if t[i] not in local_idcs_soft:
+                continue
+        local_triplets.append(t)
+    local_triplets = np.array(local_triplets)
+    print('using {} local triplets'.format(len(local_triplets)))
 
     # convert triplet indices to local selection
     local_idx_to_idx = {li: i for i, li in enumerate(local_idcs_soft)}
-    for i, t in enumerate(triplet_constraints):
-        for j in range(triplet_constraints.shape[1]):
-            triplet_constraints[i, j] = local_idx_to_idx[t[j]]
+    for i, t in enumerate(local_triplets):
+        for j in range(local_triplets.shape[1]):
+            local_triplets[i, j] = local_idx_to_idx[t[j]]
 
     # get soft margin points and use them as fix points to compute embedding
     fix_points = set(local_idcs_soft).difference(local_idcs)
+    print('Local embedding using {} points and keeping {} fixed'.format(len(local_idcs_soft), len(fix_points)))
+
+    # TODO: USE CURRENT EMBEDDING
+    # compute initialisation by shifting current embedding such that center is at origin
+    initial_Y = prev_embedding[local_idcs_soft] - center
+
+    local_kwargs = kwargs.copy()
+    # TODO: CHOOSE PERPLEXITY FOR FEW POINTS ACCORDINGLY
 
     embedding = embedding_func(np.stack(features).astype(np.double)[local_idcs_soft],
-                               triplets=triplet_constraints,
-                               weights_triplets=triplet_weights,
+                               triplets=local_triplets,
+                               weights_triplets=triplet_weights[local_idcs_soft],
                                position_constraints=np.zeros((1, 3)),
-                               fix_points=fix_points, initial_Y=prev_embedding[local_idcs_soft],
-                               radius=radius, contrib_cost_extent=1,
-                               **kwargs)
-    # update embedding
-    prev_embedding[local_idcs_soft] = embedding
+                               fix_points=fix_points, initial_Y=initial_Y,
+                               center=None, radius=radius, contrib_cost_extent=1,           # center=None because initial data is centered already
+                               **local_kwargs)
+
+    print('local center before: {} \tafter: {}'.format(center, np.mean(embedding, axis=0, keepdims=True)))
+    prev_embedding[local_idcs_soft] = embedding + center
+
 
 

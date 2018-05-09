@@ -97,6 +97,7 @@ def create_genre_dataset(label='styles'):
             'genre_labels': genre_labels, label + '_labels': second_label}
 
 
+# GENRE DATASET
 # load dataset
 second_label = 'styles'
 dataset = create_genre_dataset(second_label)
@@ -108,6 +109,19 @@ features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.nor
 genre_labels = dataset['genre_labels']
 second_labels = dataset[second_label + '_labels']
 labels = {'genre_labels': genre_labels, second_label + '_labels': second_labels}
+
+# # ARTIST DATASET
+# with open('../wikiart/artist_testset.pkl', 'rb') as f:
+#     dataset = pickle.load(f)
+# # load dataset
+# image_names = dataset['id']
+# features = dataset['features']
+# # normalize features
+# features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.norm(features, axis=1, keepdims=True)
+#
+# genre_labels = dataset['label']
+# labels = {'genre_labels': genre_labels}
+
 
 # some more global variables
 n_clusters = 10
@@ -123,6 +137,11 @@ triplet_weights = None
 graph = None
 svm_cluster = None
 local_idcs = None
+# SVM definition
+parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
+              'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
+clf = GridSearchCV(SVC(), parameters)
+svm_label = -2
 
 
 if __name__ == '__main__':              # dummy main to initialise global variables
@@ -307,8 +326,8 @@ def compute_graph(current_graph=[]):
     return graph
 
 
-def learn_svm(positives, negatives, grid_search=False):
-    global features, svm_cluster, local_idcs
+def learn_svm(positives, negatives, counter):
+    global features, svm_cluster, local_idcs, clf, svm_label
     n_positives = len(positives)
     n_negatives = len(negatives)
 
@@ -319,7 +338,6 @@ def learn_svm(positives, negatives, grid_search=False):
     idcs_train = np.concatenate([idcs_positives, idcs_negatives])
     assert len(idcs_train) == len(np.unique(idcs_train)), 'duplicates in user selection were not filtered properly'
 
-
     # make svm local!
     # TODO: use CURRENT embedding
     positions = np.array([p for p in prev_embedding[idcs_train]])
@@ -329,26 +347,29 @@ def learn_svm(positives, negatives, grid_search=False):
     print('selection radius: {}'.format(radius))
 
     train_data = np.concatenate([features[idcs_train]])
-    train_labels = np.concatenate([np.ones(n_positives), np.zeros(n_negatives)])        # positives: 1, negatives: 0
+    train_labels = np.concatenate([svm_label * np.ones(n_positives), (svm_label + 1) * np.ones(n_negatives)])        # new labels for new iterations
+
+    # TODO: DEFINE HOW TO DEAL WITH MULTI-LABELS
+    if counter == 0:
+        svm_label += 2  # new labels for new iterations
+        if hasattr(clf.best_estimator_, 'support_'):  # load old training data if existent
+            print('load previous svm training data with labels {} - now start labelling from {}'
+                  .format(range(len(clf.best_estimator_.n_support_)), svm_label))
+            assert len(clf.best_estimator_.n_support_) == svm_label, 'counter in labels went wrong somewhere'
+            train_data.append(clf.best_estimator_.support_vectors_)
+            for l, n in enumerate(clf.best_estimator_.n_support_):
+                train_labels.append(l * np.ones(n))
 
     # TODO: use CURRENT embedding
     d = np.array([euclidean(p, center) for p in prev_embedding])
     local_idcs = np.where(d <= radius)[0]
-
-    if grid_search:
-        parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
-                      'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
-        svc = SVC()
-        clf = GridSearchCV(svc, parameters)
-    else:
-        clf = SVC(kernel='rbf', C=10, gamma='auto')
 
     print('Train SVM on user input...')
     tic = time()
     clf.fit(X=train_data, y=train_labels)
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
-    if grid_search:
+    if hasattr(clf, 'best_params_'):
         print(clf.best_params_)
 
     print('Predict class membership for whole dataset...')

@@ -143,6 +143,7 @@ parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
 svm = SVC(decision_function_shape='ovr')
 clf = GridSearchCV(svm, parameters)
 svm_label = 0
+prev_support = None
 
 
 if __name__ == '__main__':              # dummy main to initialise global variables
@@ -328,7 +329,7 @@ def compute_graph(current_graph=[]):
 
 
 def learn_svm(positives, negatives, counter):
-    global features, svm_cluster, local_idcs, clf, svm_label
+    global features, svm_cluster, local_idcs, clf, svm_label, prev_support
     clf_pretrained = counter == 0 and hasattr(clf, 'best_estimator_')
     if clf_pretrained:          # new labels for new iterations
         svm_label += 2
@@ -358,9 +359,12 @@ def learn_svm(positives, negatives, counter):
         print('load previous svm training data with labels {} - now start labelling from {}'
               .format(range(len(clf.best_estimator_.n_support_)), svm_label))
         assert len(clf.best_estimator_.n_support_) == svm_label, 'counter in labels went wrong somewhere'
-        train_data = np.append(train_data, clf.best_estimator_.support_vectors_, axis=0)
+        prev_support_vectors = clf.best_estimator_.support_vectors_
+        train_data = np.append(train_data, prev_support_vectors, axis=0)
+        prev_support_labels = []
         for l, n in enumerate(clf.best_estimator_.n_support_):
-            train_labels = np.append(train_labels, l * np.ones(n))
+            prev_support_labels += l * np.ones(n)
+        train_labels = np.append(train_labels, prev_support_labels)
         # update parameter grid search
         class_weights = []
         for search_params in [(1, 0.2), (1, 1), (1, 5)]:
@@ -369,6 +373,12 @@ def learn_svm(positives, negatives, counter):
             weight_params[svm_label + 1] = search_params[1]     # positives
             class_weights.append(weight_params)
         clf.param_grid['class_weight'] = class_weights
+        prev_support = (prev_support_vectors, prev_support_labels)
+
+    elif hasattr(clf, 'best_estimator_'):           # load previous support
+        prev_support_vectors, prev_support_labels = prev_support
+        train_data = np.append(train_data, prev_support_vectors, axis=0)
+        train_labels = np.append(train_labels, prev_support_labels)
 
     # TODO: use CURRENT embedding
     d = np.array([euclidean(p, center) for p in prev_embedding])
@@ -613,15 +623,18 @@ def local_embedding(buffer=0.):
         triplet_weights = np.mean(np.stack([triplet_weights, tw], axis=1), axis=1)        # TODO: BETTER SYSTEM FOR COMBINING WEIGHTS
 
     sample_idcs = np.concatenate([svm_cluster['labeled']['p'], svm_cluster['labeled']['n']])
-    local_idcs, center, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=False)
+    local_idcs, center, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
     local_idcs_soft, _, _ = get_neighborhood(prev_embedding, sample_idcs, buffer=buffer, use_faiss=True)
 
     local_triplets = []
     for t in triplet_constraints:
+        local = True
         for i in range(triplet_constraints.shape[1]):
             if t[i] not in local_idcs_soft:
-                continue
-        local_triplets.append(t)
+                local = False
+                break
+        if local:
+            local_triplets.append(t)
     local_triplets = np.array(local_triplets)
     print('using {} local triplets'.format(len(local_triplets)))
 

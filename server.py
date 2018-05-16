@@ -10,7 +10,7 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from SVM_embedding_multiclass import compute_graph, learn_svm, triplet_constraints_from_svm, local_embedding
+from SVM_embedding_local import compute_graph, learn_svm, multiclass_embed, local_embedding
 """
 def format_string(graph):
     s = str(graph)
@@ -64,6 +64,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # Katjas code goes here
             data = compute_graph(data)
+            # data = multiclass_embed(data)
 
             # make json
             data = json.dumps(data).encode()

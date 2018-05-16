@@ -18,12 +18,14 @@ from collections import Counter
 import warnings
 from itertools import combinations
 from scipy.spatial.distance import euclidean
+import os
 
 
 sys.path.append('/export/home/kschwarz/Documents/Masters/Modify_TSNE/')
 from modify_snack import snack_embed_mod
 sys.path.append('/export/home/kschwarz/anaconda3/envs/py27/lib/python2.7/site-packages/faiss-master/')
 import faiss
+from evaluate_svms import multiclass_embedding, multiclass_embedding_rf
 
 
 seed = 123
@@ -99,7 +101,11 @@ def create_genre_dataset(label='styles'):
 
 # load dataset
 second_label = 'styles'
-dataset = create_genre_dataset(second_label)
+if not os.path.isfile('genre_' + second_label + '_600_testset.pkl'):
+    dataset = create_genre_dataset(second_label)
+else:
+    with open('genre_styles_600_testset.pkl', 'rb') as f:
+        dataset = pickle.load(f)
 image_names = np.array([name.replace('.jpg', '') for name in dataset['image_names']])
 features = dataset['features']
 # normalize features
@@ -120,9 +126,12 @@ prev_embedding = None
 position_constraints = None
 triplet_constraints = None
 triplet_weights = None
+current_triplets = None
+current_triplet_weights = None
 graph = None
 svm_cluster = None
 local_idcs = None
+svms = []
 
 
 if __name__ == '__main__':              # dummy main to initialise global variables
@@ -307,18 +316,34 @@ def compute_graph(current_graph=[]):
     return graph
 
 
-def learn_svm(positives, negatives, grid_search=False):
-    global features, svm_cluster, local_idcs
+def learn_svm(positives, negatives, counter, grid_search=True):
+    global features, svm_cluster, local_idcs, svms
+    global triplet_constraints, triplet_weights, current_triplets, current_triplet_weights
     n_positives = len(positives)
     n_negatives = len(negatives)
 
     print('n positives: {}\nn negatives: {}'.format(n_positives, n_negatives))
-    idcs_positives = np.array([p['index'] for p in positives], dtype=int)
-    idcs_negatives = np.array([n['index'] for n in negatives], dtype=int)
+    idcs_positives = np.unique(np.array([p['index'] for p in positives], dtype=int))
+    idcs_negatives = np.unique(np.array([n['index'] for n in negatives], dtype=int))
 
+    if n_positives == 0 or n_negatives == 0:
+        return list(idcs_positives), list(idcs_negatives)
+
+    for i, idx in enumerate(idcs_positives):
+        if idx in idcs_negatives:
+            # compare which label was given later
+            print('sample labeled controversly!')
+            j = np.where(idcs_negatives == idx)[0][-1]
+            if i < j:
+                idcs_positives = np.delete(idcs_positives, i)
+            else:
+                idcs_negatives = np.delete(idcs_negatives, j)
+
+    n_positives = len(idcs_positives)
+    n_negatives = len(idcs_negatives)
     idcs_train = np.concatenate([idcs_positives, idcs_negatives])
-    assert len(idcs_train) == len(np.unique(idcs_train)), 'duplicates in user selection were not filtered properly'
 
+    assert len(idcs_train) == len(np.unique(idcs_train)), 'duplicates in user selection were not filtered properly'
 
     # make svm local!
     # TODO: use CURRENT embedding
@@ -335,13 +360,28 @@ def learn_svm(positives, negatives, grid_search=False):
     d = np.array([euclidean(p, center) for p in prev_embedding])
     local_idcs = np.where(d <= radius)[0]
 
-    if grid_search:
-        parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
-                      'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
-        svc = SVC()
-        clf = GridSearchCV(svc, parameters)
+    if counter == 0:
+        if grid_search:
+            parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
+                          # 'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
+                          'class_weight': ['balanced']}
+            svc = SVC(probability=True)                         # TODO: disable probability TRUE if unused
+            clf = GridSearchCV(svc, parameters)
+        else:
+            clf = SVC(kernel='rbf', C=10, gamma='auto', class_weight='balanced', probability=True)  # TODO: disable probability TRUE if unused
+        svms.append(clf)
+        print('append previous triplet constraints')
+        # save previous triplets to global ones
+        if current_triplets is not None:
+            if triplet_constraints is None:
+                triplet_constraints = current_triplets
+                triplet_weights = current_triplet_weights
+            else:
+                triplet_constraints = np.concatenate([triplet_constraints, current_triplets])
+                triplet_weights = np.concatenate([triplet_weights, current_triplet_weights])
+
     else:
-        clf = SVC(kernel='rbf', C=10, gamma='auto')
+        clf = svms[-1]
 
     print('Train SVM on user input...')
     tic = time()
@@ -380,6 +420,11 @@ def learn_svm(positives, negatives, grid_search=False):
 
     print(len(pred_pos), len(pred_neg))
 
+    # get non local topscorer
+    n_topscorer = 5
+    outlier_topscorer = [d_decision_boundary[idx] for idx in sort_idcs[::-1] if idx not in local_idcs]
+    outlier_topscorer = outlier_topscorer[:n_topscorer]
+
     # return most uncertain samples
     n = 5
     pos = list(pred_pos[:n])
@@ -399,7 +444,10 @@ def learn_svm(positives, negatives, grid_search=False):
             neg += list(pred_neg[n_neg/2 : n_neg/2 + n_semihard])
         else:
             neg += list(pred_neg[n_neg/2 : -1])
-    return pos, neg
+
+    print('trained {} svms'.format(len(svms)))
+
+    return pos, neg, outlier_topscorer
 
 
 # def position_constraints_from_svm():
@@ -428,8 +476,12 @@ def learn_svm(positives, negatives, grid_search=False):
 #     print('Created {} constraints.'.format(len(constraints)))
 
 
-def generate_triplets(positives, negatives, N, n_pos_pa=1, n_neg_pp=1, seed=123):
+def generate_triplets(positives, negatives, N, n_pos_pa=1, n_neg_pp=1, seed=123,
+                      consider_neighborhood=False, embedding=None, n_nn_neg_pp=1):
     np.random.seed(seed)
+    neighbor_sampling = consider_neighborhood and embedding is not None
+    if neighbor_sampling:
+        assert np.concatenate([positives, negatives]).max() < len(embedding), 'sample index out of embedding shape'
 
     n_pos_pa = min(n_pos_pa, len(positives) - 1)
     n_neg_pp = min(n_neg_pp, len(negatives) - 1)
@@ -448,10 +500,34 @@ def generate_triplets(positives, negatives, N, n_pos_pa=1, n_neg_pp=1, seed=123)
     triplets = np.empty((N, 3), dtype=np.long)
 
     anchors = np.random.choice(positives, N_anchors, replace=False)
+    if neighbor_sampling:
+        # get the embedding neighbors for the anchors
+        index = faiss.IndexFlatL2(embedding.shape[1])  # build the index
+        index.add(embedding.astype('float32'))  # add vectors to the index
+        _, neighbors = index.search(embedding[anchors].astype('float32'), len(embedding))
+
     for i, a in enumerate(anchors):
         pos = np.random.choice(np.delete(positives, np.where(positives == a)[0][0]), n_pos_pa, replace=False)
+
+        if neighbor_sampling:       # get the nearest negatives
+            nn_negatives = np.array([nghbr for nghbr in neighbors[i] if nghbr in negatives])
+            n_neg_neighbors = min(len(nn_negatives) - 1, n_pos_pa * n_nn_neg_pp)
+            nn_negatives = nn_negatives[:n_neg_neighbors]
+            outer_negatives = np.array([n for n in negatives if not n in nn_negatives])
+            n_outer_neg_pp = min(n_neg_pp - n_nn_neg_pp, len(outer_negatives) - 1)
+
+            if n_outer_neg_pp + n_nn_neg_pp != n_neg_pp:
+                n_nn_neg_pp = n_neg_pp - n_outer_neg_pp
+                warnings.warn('cannot generate {} negatives. Use {} negatives from neighborhood '
+                              'and {} from outside.'.format(n_neg_pp, n_nn_neg_pp, n_outer_neg_pp))
+
         for j, p in enumerate(pos):
-            neg = np.random.choice(negatives, n_neg_pp, replace=False)
+            if neighbor_sampling:
+                nn_neg = np.random.choice(nn_negatives, n_nn_neg_pp, replace=False)
+                neg = np.random.choice(outer_negatives, n_outer_neg_pp, replace=False)
+                neg = np.concatenate([nn_neg, neg])
+            else:
+                neg = np.random.choice(negatives, n_neg_pp, replace=False)
             t = np.stack([np.repeat(a, n_neg_pp), np.repeat(p, n_neg_pp), neg], axis=1)
             i_start = (i * n_pos_pa + j) * n_neg_pp
             triplets[i_start:i_start + n_neg_pp] = t
@@ -468,11 +544,15 @@ def triplet_constraints_from_svm():
     n_constraints = 2000
     n_positives_pa = 5
     n_negatives_pp = 20     # 20 negatives per positive
+    use_neighborhood = True
+    n_nn_neg_pp = 5
 
     # labeled data
     n_constraints_labeled = 200
     n_positives_pa_labeled = 5
     n_negatives_pp_labeled = 10  # 10 negatives per positive
+    use_neighborhood_labeled = True
+    n_nn_neg_pp_labeled = 2
 
     positives = svm_cluster['positives']
     negatives = svm_cluster['negatives']
@@ -481,15 +561,26 @@ def triplet_constraints_from_svm():
     negatives_labeled = svm_cluster['labeled']['n']
 
     # sample constraints from user labeled data
-    constraints = generate_triplets(positives_labeled, negatives_labeled,
-                                    N=n_constraints_labeled,
-                                    n_pos_pa=n_positives_pa_labeled, n_neg_pp=n_negatives_pp_labeled,
-                                    seed=seed)
-    constraints = np.append(constraints,
-                            generate_triplets(positives, negatives,
-                                              N=n_constraints, n_pos_pa=n_positives_pa, n_neg_pp=n_negatives_pp,
-                                              seed=seed),
-                            axis=0)
+    triplets_labeled = generate_triplets(positives_labeled, negatives_labeled,
+                                         N=n_constraints_labeled,
+                                         n_pos_pa=n_positives_pa_labeled, n_neg_pp=n_negatives_pp_labeled,
+                                         seed=seed,
+                                         consider_neighborhood=use_neighborhood_labeled,
+                                         embedding=prev_embedding,        #TODO: use current embedding
+                                         n_nn_neg_pp=n_nn_neg_pp_labeled)
+    triplets = generate_triplets(positives, negatives,
+                                 N=n_constraints, n_pos_pa=n_positives_pa, n_neg_pp=n_negatives_pp,
+                                 seed=seed,
+                                 consider_neighborhood=use_neighborhood,
+                                 embedding=prev_embedding,        #TODO: use current embedding
+                                 n_nn_neg_pp=n_nn_neg_pp)
+
+    if len(triplets_labeled) == 0:
+        triplet_constraints = triplets
+    elif len(triplets) == 0:
+        triplet_constraints = triplets_labeled
+    else:
+        triplet_constraints = np.concatenate([triplets_labeled, triplets], axis=0).astype(np.long)
 
     triplet_weights = np.zeros(len(features))
     for k, v in distances.items():
@@ -505,12 +596,9 @@ def triplet_constraints_from_svm():
     print('WEIGHTS: min: {}, max: {}, mean: {}'.format(min(triplet_weights), max(triplet_weights),
                                                        triplet_weights.mean()))
 
-    triplet_constraints = np.array(constraints, dtype=long)
-
-
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
-    print('Created {} triplet constraints.'.format(len(constraints)))
+    print('Created {} triplet constraints.'.format(len(triplet_constraints)))
 
     return triplet_constraints, triplet_weights
 
@@ -532,7 +620,7 @@ def get_neighborhood(data, sample_idcs, buffer=0., use_faiss=True):
         distances, indices = index.search(center.astype('float32'), len(data))
         distances, indices = np.sqrt(distances[0]), indices[0]          # faiss returns squared distances
 
-        radius = max(distances)
+        radius = max([d for d, i in zip(distances, indices) if i in sample_idcs])
         radius += buffer * radius
 
         local_idcs = []
@@ -545,7 +633,7 @@ def get_neighborhood(data, sample_idcs, buffer=0., use_faiss=True):
     else:
         distances = np.array([euclidean(d, center) for d in data])
 
-        radius = max(distances)
+        radius = max(distances[sample_idcs])
         radius += buffer * radius
 
         local_idcs = np.where(distances <= radius)[0]
@@ -558,29 +646,102 @@ def local_embedding(buffer=0.):
     Args:
         buffer: fraction of radius from which to choose fix points outside of data sphere
         """
-    global prev_embedding, svm_cluster, features, kwargs
-    triplet_constraints, triplet_weights = triplet_constraints_from_svm()
+    global prev_embedding, svm_cluster, features, kwargs, triplet_constraints, triplet_weights, \
+        current_triplet_weights, current_triplets, svms, labels
+    global labels
+
+    # a little out of context: save svms
+    with open('_svms.pkl', 'wb') as f:
+        pickle.dump(svms, f)
+
+    current_triplets, current_triplet_weights = triplet_constraints_from_svm()
+
+    if triplet_constraints is None:
+        tc = current_triplets
+        tw = current_triplet_weights
+
+    else:
+        tc = np.append(triplet_constraints, current_triplets, axis=0)
+        tw = np.mean(np.stack([triplet_weights, current_triplet_weights], axis=1), axis=1)        # TODO: BETTER SYSTEM FOR COMBINING WEIGHTS
+
     sample_idcs = np.concatenate([svm_cluster['labeled']['p'], svm_cluster['labeled']['n']])
-    local_idcs, _, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
+    local_idcs, center, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
     local_idcs_soft, _, _ = get_neighborhood(prev_embedding, sample_idcs, buffer=buffer, use_faiss=True)
+
+    local_triplets = []
+    for t in tc:
+        local = True
+        for i in range(tc.shape[1]):
+            if t[i] not in local_idcs_soft:
+                local = False
+                break
+        if local:
+            local_triplets.append(t)
+    local_triplets = np.array(local_triplets)
+    print('using {} local triplets'.format(len(local_triplets)))
 
     # convert triplet indices to local selection
     local_idx_to_idx = {li: i for i, li in enumerate(local_idcs_soft)}
-    for i, t in enumerate(triplet_constraints):
-        for j in range(triplet_constraints.shape[1]):
-            triplet_constraints[i, j] = local_idx_to_idx[t[j]]
+    for i, t in enumerate(local_triplets):
+        for j in range(local_triplets.shape[1]):
+            local_triplets[i, j] = local_idx_to_idx[t[j]]
 
     # get soft margin points and use them as fix points to compute embedding
     fix_points = set(local_idcs_soft).difference(local_idcs)
+    fix_points = np.array([local_idx_to_idx[li] for li in fix_points], dtype=np.long)
+    print('Local embedding using {} points and keeping {} fixed'.format(len(local_idcs_soft), len(fix_points)))
+
+    # mark local indices and margin by labelling
+    label = np.array(['outer'] * len(features))
+    label[local_idcs_soft] = 'margin'
+    label[local_idcs] = 'inner'
+    labels['locality'] = label
+
+
+    # TODO: USE CURRENT EMBEDDING
+    # compute initialisation by shifting current embedding such that center is at origin
+    initial_Y = prev_embedding[local_idcs_soft] - center
+
+    local_kwargs = kwargs.copy()
+    # TODO: CHOOSE PERPLEXITY FOR FEW POINTS ACCORDINGLY
+    local_kwargs['perplexity'] = min(kwargs['perplexity'], (len(local_idcs) - 1)/3)
+    assert local_kwargs['perplexity'] >= 5, 'please choose at least 14 local samples for svm'
+    print('perplexity: {}'.format(local_kwargs['perplexity']))
 
     embedding = embedding_func(np.stack(features).astype(np.double)[local_idcs_soft],
-                               triplets=triplet_constraints,
-                               weights_triplets=triplet_weights,
+                               triplets=local_triplets,
+                               weights_triplets=tw[local_idcs_soft],
                                position_constraints=np.zeros((1, 3)),
-                               fix_points=fix_points, initial_Y=prev_embedding[local_idcs_soft],
-                               radius=radius, contrib_cost_extent=1,
-                               **kwargs)
-    # update embedding
-    prev_embedding[local_idcs_soft] = embedding
+                               fix_points=fix_points, initial_Y=initial_Y,
+                               center=None, radius=radius, contrib_cost_extent=1,           # center=None because initial data is centered already
+                               **local_kwargs)
 
+    print('local center before: {} \tafter: {}'.format(center, np.mean(embedding + center, axis=0, keepdims=True)))
+    prev_embedding[local_idcs_soft] = embedding + center
+
+
+def multiclass_embed(current_graph=[]):
+    global image_names, labels, n_clusters
+    global graph, position_constraints, prev_embedding
+    global features, svms, seed
+    if len(current_graph) == 0 or prev_embedding is None or len(svms) == 0:
+        print('Initialise graph...')
+        tic = time()
+        compute_embedding()  # initialise prev_embedding with standard tsne
+
+    else:
+        tic = time()
+        # prev_embedding = multiclass_embedding_rf(svms, features, seed)     # compute prev_embedding from svms tsne
+        prev_embedding = multiclass_embedding(svms, features)  # compute prev_embedding from svms tsne
+
+    # find clusters
+    clusters = cluster_embedding(prev_embedding, n_clusters=n_clusters, seed=seed)
+
+    graph = create_graph(image_names, prev_embedding, label=clusters, labels=labels)
+    print(graph)
+    toc = time()
+    print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
+    print('Embedding range: x [{}, {}], y [{}, {}]'.format(prev_embedding[0].min(), prev_embedding[0].max(),
+                                                           prev_embedding[1].min(), prev_embedding[1].max()))
+    return graph
 

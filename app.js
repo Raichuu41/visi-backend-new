@@ -90,7 +90,8 @@ app.use('/api', express.static('images'));
 let imgPath = '';
 
 if (process.env.NODE_ENV === 'development') {
-    imgPath = `${__dirname}/images/images_3000/`;
+    // imgPath = `${__dirname}/images/images_3000/`;
+    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`
 } else {
     imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
 }

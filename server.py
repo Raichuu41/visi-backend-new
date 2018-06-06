@@ -10,7 +10,7 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from SVM_embedding_local import compute_graph, learn_svm, multiclass_embed, local_embedding
+from SVM_embedding_global import compute_graph, learn_svm, multiclass_embed, local_embedding
 """
 def format_string(graph):
     s = str(graph)
@@ -87,10 +87,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(data)
 
             # Katjas code goes here
-            p, n = learn_svm(data['p'], data['n'], data['count'])
+            p, n, t = learn_svm(data['p'], data['n'], data['count'])
 
             # make json
-            data = json.dumps({'p': p, 'n': n}).encode()
+            data = json.dumps({'p': p, 'n': n, 't': t}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
         if(self.path == "/stopSvm"):

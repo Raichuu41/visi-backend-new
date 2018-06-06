@@ -21,6 +21,9 @@ from scipy.spatial.distance import euclidean
 import os
 from evaluate_svm import evaluate
 
+sys.path.append('/export/home/kschwarz/Documents/Masters/DenseFeatures/')
+from TinyImageNet import TinyImageNet, label_to_word, get_label_dict
+
 import h5py
 
 
@@ -35,6 +38,9 @@ seed = 123
 np.random.seed(123)
 
 
+#########################################
+### WIKIART #############################
+#########################################
 def create_genre_dataset(label='styles'):
     print('Create dataset...')
     tic = time()
@@ -118,28 +124,52 @@ genre_labels = dataset['genre_labels']
 second_labels = dataset[second_label + '_labels']
 labels = {'genre_labels': genre_labels, second_label + '_labels': second_labels}
 
-# sabine dataset
-with h5py.File('/export/home/kschwarz/Documents/Masters/Sabine_Project/features_from_rating.hdf5') as h5file:
-    features = h5file['features'].value
-    image_names = h5file['image_names'].value
-# add some random noise to the features, because each artist has the same features
-noise = np.random.rand(features.shape[0], features.shape[1]) * 0.2    # on scale [0,1]
-noise = np.max(features, axis=0, keepdims=True) * noise
-features = noise + features
 
-# filter because i messed up
-image_names = np.array([name.replace('.jpeg', '').replace('.JPG', '')
-                       .replace('.PNG', '').replace('.png', '') for name in image_names])
+########################################
+## IMAGES DE PILES #####################
+########################################
+# with h5py.File('/export/home/kschwarz/Documents/Masters/Sabine_Project/features_from_rating.hdf5') as h5file:
+#     features = h5file['features'].value
+#     image_names = h5file['image_names'].value
+# # add some random noise to the features, because each artist has the same features
+# noise = np.random.rand(features.shape[0], features.shape[1]) * 0.2    # on scale [0,1]
+# noise = np.max(features, axis=0, keepdims=True) * noise
+# features = noise + features
+#
+# # filter because i messed up
+# image_names = np.array([name.replace('.jpeg', '').replace('.JPG', '')
+#                        .replace('.PNG', '').replace('.png', '') for name in image_names])
+#
+# labels = {'artists': [name.split('/')[0] for name in image_names]}
 
-labels = {'artists': [name.split('/')[0] for name in image_names]}
+#########################################
+### TINY IMAGENET #######################
+#########################################
+# data_dir = '/export/home/kschwarz/Documents/Data/tiny-imagenet-200'
+# dataset = TinyImageNet(data_dir, split='val')
+# image_names = np.array([name.replace('.JPEG', '') for name in dataset.image_names])
+# print(len(image_names))
+# # load features
+# ft_file = '/export/home/kschwarz/Documents/Masters/SmallNets/output/MobileNetV2_TinyImageNet.hdf5'
+# with h5py.File(ft_file, 'r') as h5file:
+#     features = h5file['val/features'].value
+#     image_names2 = np.array([name.replace('.JPEG', '') for name in h5file['val/image_names'].value])
+# assert (image_names == image_names2).all(), 'feature file does not match dataset'
+# # normalize features
+# features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.norm(features, axis=1, keepdims=True)
+#
+# label_dict = get_label_dict(data_dir, split='val')
+# lbl_to_word = label_to_word(data_dir)
+#
+# labels = {'class_label': np.array([lbl_to_word[label_dict[name + '.JPEG']] for name in image_names])}
 
 
 # some more global variables
 n_clusters = 10
-n_neighbors = 1         # number of links in nearest neighbor graph
+n_neighbors = 10         # number of links in nearest neighbor graph
 embedding_func = snack_embed_mod        # function to use for low dimensional projection / embedding
 kwargs = {'contrib_cost_tsne': 100, 'contrib_cost_triplets': 0.1, 'contrib_cost_position': 1.0,
-          'perplexity': 30, 'theta': 0.5, 'no_dims': 2}         # kwargs for embedding_func
+          'perplexity': 30, 'theta': 0.5, 'no_dims': 2, 'early_exaggeration': 50}         # kwargs for embedding_func
 
 prev_embedding = None
 position_constraints = None
@@ -150,6 +180,7 @@ current_triplet_weights = None
 graph = None
 svm_cluster = None
 local_idcs = None
+global_negatives = None
 svms = []
 
 
@@ -336,12 +367,14 @@ def compute_graph(current_graph=[]):
 
 
 def learn_svm(positives, negatives, counter, grid_search=True):
-    global features, svm_cluster, local_idcs, svms
+    global features, svm_cluster, local_idcs, svms, global_negatives
     global triplet_constraints, triplet_weights, current_triplets, current_triplet_weights
+    global labels
+    n_global_negatives = 100
     n_positives = len(positives)
     n_negatives = len(negatives)
 
-    print('n positives: {}\nn negatives: {}'.format(n_positives, n_negatives))
+    print('n positives: {}\nn negatives: {} + ({})'.format(n_positives, n_negatives,  n_global_negatives))
     idcs_positives = np.unique(np.array([p['index'] for p in positives], dtype=int))
     idcs_negatives = np.unique(np.array([n['index'] for n in negatives], dtype=int))
 
@@ -379,7 +412,10 @@ def learn_svm(positives, negatives, counter, grid_search=True):
     d = np.array([euclidean(p, center) for p in prev_embedding])
     local_idcs = np.where(d <= radius)[0]
 
+    outer_idcs = np.where(d > radius)[0]
+
     if counter == 0:
+        global_negatives = np.random.choice(outer_idcs, n_global_negatives, replace=False)
         if grid_search:
             parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
                           # 'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
@@ -401,10 +437,18 @@ def learn_svm(positives, negatives, counter, grid_search=True):
 
     else:
         clf = svms[-1]
+        for i, g_neg in enumerate(global_negatives):
+            if g_neg in local_idcs:
+                warnings.warn('Global negative is now local, sample new one.', RuntimeWarning)
+                g_n = np.random.choice(outer_idcs)
+                while g_n in global_negatives:
+                    g_n = np.random.choice(outer_idcs)
+                global_negatives[i] = g_n
 
     print('Train SVM on user input...')
     tic = time()
-    clf.fit(X=train_data, y=train_labels)
+    clf.fit(X=np.concatenate([train_data, features[global_negatives]]),
+            y=np.concatenate([train_labels, np.zeros(len(global_negatives))]))
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
     if grid_search:
@@ -413,10 +457,14 @@ def learn_svm(positives, negatives, counter, grid_search=True):
     print('Predict class membership for whole dataset...')
     predicted_labels = clf.predict(features)
     d_decision_boundary = clf.decision_function(features)
+    labels['confidence'] = np.array(['confident' if abs(d) > 1.0 else 'unsure' for d in d_decision_boundary])
+    labels['svm label'] = np.array(['svm pos' if p else 'svm neg' for p in predicted_labels])
+
     # save test prediction and distance to decision boundary
     with open('_svm_prediction.pkl', 'wb') as f:
         pickle.dump({'labels': predicted_labels, 'distance': d_decision_boundary,
                      'image_names': image_names, 'local_indices': local_idcs,
+                     'global_negatives': n_global_negatives,
                      'idcs_positives_train': idcs_positives,
                      'idcs_negatives_train': idcs_negatives}, f)
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
@@ -441,8 +489,8 @@ def learn_svm(positives, negatives, counter, grid_search=True):
 
     # get non local topscorer
     n_topscorer = 5
-    outlier_topscorer = [idx for idx in sort_idcs[::-1] if idx not in local_idcs]
-    outlier_topscorer = outlier_topscorer[:n_topscorer]
+    outlier_topscorer = [idx for idx in sort_idcs[predicted_labels == 1][::-1] if idx not in local_idcs]            # TODO: MAKE SURE POSITIVE LABELS ARE 1
+    outlier_topscorer = outlier_topscorer[:min(len(outlier_topscorer), n_topscorer)]
 
     # return most uncertain samples
     n = 5
@@ -749,6 +797,7 @@ def local_embedding(buffer=0.):
         pickle.dump(svm_data, f)
 
     evaluate(plot_decision_boundary=False, plot_GTE=True, compute_GTE=True)
+
 
 def multiclass_embed(current_graph=[]):
     global image_names, labels, n_clusters

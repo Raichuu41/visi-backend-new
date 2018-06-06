@@ -89,12 +89,15 @@ app.use('/api', express.static('images'));
 // set different image path for prod/dev mode
 let imgPath = '';
 
-if (process.env.NODE_ENV === 'development') {
+if (false) {
     imgPath = `${__dirname}/images/images_3000/`;
 } else {
-//    imgPath = `/export/home/asanakoy/workspace/wikiart/images/`;
+    imgPath = `/export/home/asanakoy/workspace/wikiart/images/`;
 //    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
-    imgPath = `${__dirname}/images/`;
+//    imgPath = `${__dirname}/images/`;
+//    imgPath = `/export/home/kschwarz/Documents/Masters/Sabine_Project/images-de-piles/`;
+//      imgPath = `/export/home/kschwarz/Documents/Data/tiny-imagenet-200/val/images/`;
+
 }
 
 if (!fs.existsSync(imgPath)) throw Error(`IMAGE PATH NOT EXISTS - ${imgPath}`);
@@ -163,7 +166,7 @@ io.sockets.on('connection', (socket) => {
 
 
         if (process.env.NODE_ENV === 'development') {
-            const mockDataLength = 5 //Object.keys(exampleNodes).length;
+            const mockDataLength = Object.keys(exampleNodes).length;
 
             console.log(`nodes generated from mock #: ${mockDataLength}`);
 
@@ -291,6 +294,7 @@ io.sockets.on('connection', (socket) => {
                 node.labels.forEach(label => (labels.indexOf(label) === -1) && labels.push(label));
 
 
+//                const iconPath = `${imgPath}${node.name}.JPEG`;
                 const iconPath = `${imgPath}${node.name}.jpg`;
 
                 try {
@@ -301,7 +305,8 @@ io.sockets.on('connection', (socket) => {
                         // console.log(file);
                         // let buffer = file//.toString('base64');
                         const buffer = await sharp(file)
-                            .resize(50, 50)
+//                            .resize(50, 50)
+                            .resize(200, 200)
                             .max()
                             .toFormat('jpg')
                             .toBuffer();

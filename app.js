@@ -91,6 +91,10 @@ if (process.env.NODE_ENV === 'development') {
     // imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
 } else {
     imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
+//    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
+//    imgPath = `${__dirname}/images/`;
+//    imgPath = `/export/home/kschwarz/Documents/Masters/Sabine_Project/images-de-piles/`;
+//    imgPath = `/export/home/kschwarz/Documents/Data/tiny-imagenet-200/val/images/`;
 }
 
 if (process.env.NODE_ENV === 'development') {
@@ -152,19 +156,6 @@ app.use('/api', express.static('images'));
     res.send()
 }) */
 
-// set different image path for prod/dev mode
-let imgPath = '';
-
-if (false) {
-    imgPath = `${__dirname}/images/images_3000/`;
-} else {
-    imgPath = `/export/home/asanakoy/workspace/wikiart/images/`;
-//    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
-//    imgPath = `${__dirname}/images/`;
-//    imgPath = `/export/home/kschwarz/Documents/Masters/Sabine_Project/images-de-piles/`;
-//      imgPath = `/export/home/kschwarz/Documents/Data/tiny-imagenet-200/val/images/`;
-
-}
 
 if (!fs.existsSync(imgPath)) throw Error(`IMAGE PATH NOT EXISTS - ${imgPath}`);
 
@@ -415,7 +406,7 @@ io.sockets.on('connection', (socket) => {
                         // node.buffer = stringImgHash[node.name];
                         nodes.cached = true;
                     } else {
-                        // const file = await readFile(iconPath);
+                         const file = await readFile(iconPath);
                         // console.log(file);
                         //
                         const buffer = await sharp(file)

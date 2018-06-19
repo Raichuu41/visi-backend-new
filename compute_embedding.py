@@ -164,7 +164,7 @@ def create_graph(names, positions, label=None, labels=None):
 
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc-tic) / 60, (toc-tic) % 60))
-    return nodes
+    return nodes, labels.keys()
 
 
 def compute_embedding():
@@ -765,6 +765,8 @@ def write_final_svm_output():
     find_svm_gt(svm_cluster['labeled']['p'])
     evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
              eval_local=False)
+
+    return svm_cluster['positives']
 
 
 def train_global_svm(n_global_negatives=100):

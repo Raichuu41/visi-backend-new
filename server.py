@@ -65,11 +65,11 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # print(data)
 
             # Katjas code goes here
-            data = compute_graph(data)
+            nodes, categorys = compute_graph(data)
             # data = multiclass_embed(data)
 
             # make json
-            data = json.dumps(data).encode()
+            data = json.dumps({'nodes': nodes, 'categorys': categorys}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
         if(self.path == "/trainSvm"):
@@ -115,12 +115,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # triplet_constraints_from_svm()
             # train_global_svm()
             # local_embedding_with_all_positives(buffer=0.2, confidence_threshold=0.2)
-            write_final_svm_output()
+            group_ids = write_final_svm_output()
             local_embedding(buffer=0.2)
 
             # make json
-            #data = json.dumps({p: p, n: n}).encode()
-            self.wfile.write("stopped Svm")  #body zurueckschicken
+            data = json.dumps({'group': group_ids}).encode()
+            self.wfile.write(data)  #body zurueckschicken
 
 
         return

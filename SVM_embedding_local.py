@@ -117,6 +117,7 @@ features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.nor
 genre_labels = dataset['genre_labels']
 second_labels = dataset[second_label + '_labels']
 labels = {'genre_labels': genre_labels, second_label + '_labels': second_labels}
+svm_ground_truth = np.array(labels['style_labels']) == 'realism'
 
 # sabine dataset
 with h5py.File('/export/home/kschwarz/Documents/Masters/Sabine_Project/features_from_rating.hdf5') as h5file:
@@ -132,7 +133,8 @@ image_names = np.array([name.replace('.jpeg', '').replace('.JPG', '')
                        .replace('.PNG', '').replace('.png', '') for name in image_names])
 
 labels = {'artists': [name.split('/')[0] for name in image_names]}
-
+svm_ground_truth = None
+warnings.warn('USING SABINE DATASET, NO SVM GROUND TRUTH!')
 
 # some more global variables
 n_clusters = 10
@@ -338,6 +340,7 @@ def compute_graph(current_graph=[]):
 def learn_svm(positives, negatives, counter, grid_search=True):
     global features, svm_cluster, local_idcs, svms
     global triplet_constraints, triplet_weights, current_triplets, current_triplet_weights
+
     n_positives = len(positives)
     n_negatives = len(negatives)
 
@@ -441,8 +444,9 @@ def learn_svm(positives, negatives, counter, grid_search=True):
 
     # get non local topscorer
     n_topscorer = 5
-    outlier_topscorer = [idx for idx in sort_idcs[::-1] if idx not in local_idcs]
-    outlier_topscorer = outlier_topscorer[:n_topscorer]
+    outlier_topscorer = [idx for idx in sort_idcs[predicted_labels == 1][::-1] if
+                         idx not in local_idcs]  # TODO: MAKE SURE POSITIVE LABELS ARE 1
+    outlier_topscorer = outlier_topscorer[:min(len(outlier_topscorer), n_topscorer)]
 
     # return most uncertain samples
     n = 5
@@ -466,7 +470,7 @@ def learn_svm(positives, negatives, counter, grid_search=True):
 
     print('trained {} svms'.format(len(svms)))
 
-    evaluate(plot_decision_boundary=True, plot_GTE=False, compute_GTE=False)
+    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False)
 
     return pos, neg, outlier_topscorer
 
@@ -748,7 +752,8 @@ def local_embedding(buffer=0.):
     with open('_svm_prediction.pkl', 'wb') as f:
         pickle.dump(svm_data, f)
 
-    evaluate(plot_decision_boundary=False, plot_GTE=True, compute_GTE=True)
+    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=False, plot_GTE=True, compute_GTE=True)
+
 
 def multiclass_embed(current_graph=[]):
     global image_names, labels, n_clusters

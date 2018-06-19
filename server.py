@@ -10,7 +10,9 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from SVM_embedding_global import compute_graph, learn_svm, multiclass_embed, local_embedding
+# from SVM_embedding_global import compute_graph, learn_svm, multiclass_embed, local_embedding
+from compute_embedding import compute_graph, learn_svm, local_embedding, train_global_svm, \
+    local_embedding_with_all_positives, write_final_svm_output
 """
 def format_string(graph):
     s = str(graph)
@@ -60,7 +62,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            print(data)
+            # print(data)
 
             # Katjas code goes here
             data = compute_graph(data)
@@ -84,7 +86,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            print(data)
+            # print(data)
 
             # Katjas code goes here
             p, n, t = learn_svm(data['p'], data['n'], data['count'])
@@ -111,6 +113,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # Katjas code goes here
             # triplet_constraints_from_svm()
+            # train_global_svm()
+            # local_embedding_with_all_positives(buffer=0.2, confidence_threshold=0.2)
+            write_final_svm_output()
             local_embedding(buffer=0.2)
 
             # make json

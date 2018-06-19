@@ -20,9 +20,10 @@ from itertools import combinations
 from scipy.spatial.distance import euclidean
 import os
 from evaluate_svm import evaluate
+import deepdish as dd
 
-sys.path.append('/export/home/kschwarz/Documents/Masters/DenseFeatures/')
-from TinyImageNet import TinyImageNet, label_to_word, get_label_dict
+sys.path.append('/export/home/kschwarz/Documents/Masters/SmallNets/')
+from wikiart_dataset import Wikiart
 
 import h5py
 
@@ -41,136 +42,54 @@ np.random.seed(123)
 #########################################
 ### WIKIART #############################
 #########################################
-def create_genre_dataset(label='styles'):
-    print('Create dataset...')
-    tic = time()
-
-    # load features
-    # with open('../wikiart/genre_set_inception3.pkl', 'rb') as f:
-    #     data = pickle.load(f)
-    #     features = data['features']
-    #     ids = data['ids']
-
-    # load labels
-    with open('../wikiart/genre_set.pkl', 'rb') as f:
-        data = pickle.load(f)
-        image_names = data['image_names']
-        genre_labels = data['genres']
-        assert label in data.keys(), 'unknown label {}'.format(label)
-        second_label = data[label]
-
-    # assert (image_names == ids).all()       # ensure labelling is correct
-    # del data, ids       # discard duplicate data
-
-    # make a small subset
-
-    label_selection = ['still life', 'portrait', 'landscape']
-    # filter for these labels
-    np.random.seed(123)
-    N = 200
-    selection_idcs = []
-    for i, l in enumerate(label_selection):
-        idcs = np.where(genre_labels == l)[0]
-        c = Counter(second_label[idcs])
-        c = sorted(c.items(), key=lambda x: x[1], reverse=True)
-
-        lbls = []
-        for j in range(len(c)):
-            n_per_class = int(float(N) / (j+1))
-            lbls.append(c[j][0])
-            if c[j][1] >= n_per_class and j > 0:
-                break
-        for l in lbls:
-            _idcs = np.array([idx for idx in np.where(second_label == l)[0] if idx in idcs])
-            __idcs = np.random.choice(_idcs, n_per_class, replace=False)
-            for j, idx in enumerate(__idcs):
-                while idx in selection_idcs:
-                    __idcs[j] = np.random.choice(_idcs)
-            selection_idcs += list(__idcs)
-
-
-
-    image_names = image_names[selection_idcs]
-    # features = features[selection_idcs]
-    with open('../wikiart/genre_set_artist.pkl', 'rb') as f:
-        data = pickle.load(f)
-        features = data['features']
-        ids = data['ids']
-    assert (image_names == ids).all(), 'loaded features do not match dataset'  # ensure labelling is correct
-
-    genre_labels = genre_labels[selection_idcs]
-    second_label = second_label[selection_idcs]
-
-    toc = time()
-    print('Done. ({:2.0f} min {:2.1f} s)'.format((toc - tic) / 60, (toc - tic) % 60))
-
-    return {'image_names': image_names, 'features': features,
-            'genre_labels': genre_labels, label + '_labels': second_label}
-
-
-# load dataset
-second_label = 'styles'
-if not os.path.isfile('genre_' + second_label + '_600_testset.pkl'):
-    dataset = create_genre_dataset(second_label)
-else:
-    with open('genre_styles_600_testset.pkl', 'rb') as f:
-        dataset = pickle.load(f)
-image_names = np.array([name.replace('.jpg', '') for name in dataset['image_names']])
-features = dataset['features']
-# normalize features
-features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.norm(features, axis=1, keepdims=True)
-
-genre_labels = dataset['genre_labels']
-second_labels = dataset[second_label + '_labels']
-labels = {'genre_labels': genre_labels, second_label + '_labels': second_labels}
-svm_ground_truth = np.array(labels['style_labels']) == 'realism'
-
-
-########################################
-## IMAGES DE PILES #####################
-########################################
-# with h5py.File('/export/home/kschwarz/Documents/Masters/Sabine_Project/features_from_rating.hdf5') as h5file:
-#     features = h5file['features'].value
-#     image_names = h5file['image_names'].value
-# # add some random noise to the features, because each artist has the same features
-# noise = np.random.rand(features.shape[0], features.shape[1]) * 0.2    # on scale [0,1]
-# noise = np.max(features, axis=0, keepdims=True) * noise
-# features = noise + features
-#
-# # filter because i messed up
-# image_names = np.array([name.replace('.jpeg', '').replace('.JPG', '')
-#                        .replace('.PNG', '').replace('.png', '') for name in image_names])
-#
-# labels = {'artists': [name.split('/')[0] for name in image_names]}
-
-#########################################
-### TINY IMAGENET #######################
-#########################################
-# data_dir = '/export/home/kschwarz/Documents/Data/tiny-imagenet-200'
-# dataset = TinyImageNet(data_dir, split='val')
-# image_names = np.array([name.replace('.JPEG', '') for name in dataset.image_names])
-# print(len(image_names))
-# # load features
-# ft_file = '/export/home/kschwarz/Documents/Masters/SmallNets/output/MobileNetV2_TinyImageNet.hdf5'
-# with h5py.File(ft_file, 'r') as h5file:
-#     features = h5file['val/features'].value
-#     image_names2 = np.array([name.replace('.JPEG', '') for name in h5file['val/image_names'].value])
-# assert (image_names == image_names2).all(), 'feature file does not match dataset'
+# # genre dataset
+# second_label = 'styles'
+# with open('genre_styles_600_testset.pkl', 'rb') as f:
+#     dataset = pickle.load(f)
+# image_names = np.array([name.replace('.jpg', '') for name in dataset['image_names']])
+# features = dataset['features']
 # # normalize features
 # features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.norm(features, axis=1, keepdims=True)
 #
-# label_dict = get_label_dict(data_dir, split='val')
-# lbl_to_word = label_to_word(data_dir)
-#
-# labels = {'class_label': np.array([lbl_to_word[label_dict[name + '.JPEG']] for name in image_names])}
+# genre_labels = dataset['genre_labels']
+# second_labels = dataset[second_label + '_labels']
+# labels = {'genre_labels': genre_labels, second_label + '_labels': second_labels}
 
 
-# some more global variables
+info_file = '../wikiart/datasets/info_artist_49_style_train_small.hdf5'
+# info_file = '../wikiart/datasets/info_artist_49_style_test.hdf5'
+feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_train_small.hdf5'
+# feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_test.hdf5'
+# feature_file = '../SmallNets/output/Inception3_info_artist_49_test.hdf5'
+# feature_file = '../SmallNets/output/vgg16_artsiom_info_artist_49_test.hdf5'
+# feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_test_ap_labels_4.hdf5'
+class_labels = ['artist_name', 'style']
+
+info_dict = dd.io.load(info_file)['df']
+image_names = info_dict['image_id'].values.astype(str)
+features = dd.io.load(feature_file)['features']
+image_names_ft = dd.io.load(feature_file)['image_names']
+assert (image_names == image_names_ft).all(), 'features do not match image names in info file'
+# normalize features
+features = (features - np.mean(features, axis=1, keepdims=True)) / np.linalg.norm(features, axis=1, keepdims=True)
+
+labels = {k: list(info_dict[k].values) for k in info_dict.keys() if k in class_labels}
+svm_ground_truth = None
+
+
+def find_svm_gt(positives_labeled):
+    global labels, svm_ground_truth
+    lbls = np.array(labels['style'])[positives_labeled]
+    main_lbl = sorted(Counter(lbls).items(), key=lambda x: x[1])[-1][0]         # choose label that occurs most often
+    svm_ground_truth = np.array(labels['style']) == main_lbl
+    print('svm ground truth was found to be "{}"'.format(main_lbl))
+
+
 n_clusters = 10
 n_neighbors = 10         # number of links in nearest neighbor graph
 embedding_func = snack_embed_mod        # function to use for low dimensional projection / embedding
 kwargs = {'contrib_cost_tsne': 100, 'contrib_cost_triplets': 0.1, 'contrib_cost_position': 1.0,
-          'perplexity': 30, 'theta': 0.5, 'no_dims': 2, 'early_exaggeration': 50}         # kwargs for embedding_func
+          'perplexity': 30, 'theta': 0.5, 'no_dims': 2, 'early_exaggeration': 1}         # kwargs for embedding_func
 
 prev_embedding = None
 position_constraints = None
@@ -183,6 +102,8 @@ svm_cluster = None
 local_idcs = None
 global_negatives = None
 svms = []
+with open('_svm_labels.pkl', 'wb') as f:
+    pickle.dump({'labels': np.array([]), 'confidence': np.array([])}, f)
 
 
 if __name__ == '__main__':              # dummy main to initialise global variables
@@ -371,11 +292,10 @@ def learn_svm(positives, negatives, counter, grid_search=True):
     global features, svm_cluster, local_idcs, svms, global_negatives
     global triplet_constraints, triplet_weights, current_triplets, current_triplet_weights
     global labels
-    n_global_negatives = 100
     n_positives = len(positives)
     n_negatives = len(negatives)
 
-    print('n positives: {}\nn negatives: {} + ({})'.format(n_positives, n_negatives,  n_global_negatives))
+    print('n positives: {}\nn negatives: {}'.format(n_positives, n_negatives))
     idcs_positives = np.unique(np.array([p['index'] for p in positives], dtype=int))
     idcs_negatives = np.unique(np.array([n['index'] for n in negatives], dtype=int))
 
@@ -413,10 +333,7 @@ def learn_svm(positives, negatives, counter, grid_search=True):
     d = np.array([euclidean(p, center) for p in prev_embedding])
     local_idcs = np.where(d <= radius)[0]
 
-    outer_idcs = np.where(d > radius)[0]
-
     if counter == 0:
-        global_negatives = np.random.choice(outer_idcs, n_global_negatives, replace=False)
         if grid_search:
             parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 5, 10],
                           # 'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}]}
@@ -434,22 +351,14 @@ def learn_svm(positives, negatives, counter, grid_search=True):
                 triplet_weights = current_triplet_weights
             else:
                 triplet_constraints = np.concatenate([triplet_constraints, current_triplets])
-                triplet_weights = np.concatenate([triplet_weights, current_triplet_weights])
+                triplet_weights = np.concatenate([triplet_weights, current_triplet_weights], axis=1)
 
     else:
         clf = svms[-1]
-        for i, g_neg in enumerate(global_negatives):
-            if g_neg in local_idcs:
-                warnings.warn('Global negative is now local, sample new one.', RuntimeWarning)
-                g_n = np.random.choice(outer_idcs)
-                while g_n in global_negatives:
-                    g_n = np.random.choice(outer_idcs)
-                global_negatives[i] = g_n
 
     print('Train SVM on user input...')
     tic = time()
-    clf.fit(X=np.concatenate([train_data, features[global_negatives]]),
-            y=np.concatenate([train_labels, np.zeros(len(global_negatives))]))
+    clf.fit(X=train_data, y=train_labels)
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
     if grid_search:
@@ -465,7 +374,6 @@ def learn_svm(positives, negatives, counter, grid_search=True):
     with open('_svm_prediction.pkl', 'wb') as f:
         pickle.dump({'labels': predicted_labels, 'distance': d_decision_boundary,
                      'image_names': image_names, 'local_indices': local_idcs,
-                     'global_negatives': n_global_negatives,
                      'idcs_positives_train': idcs_positives,
                      'idcs_negatives_train': idcs_negatives}, f)
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
@@ -515,6 +423,7 @@ def learn_svm(positives, negatives, counter, grid_search=True):
 
     print('trained {} svms'.format(len(svms)))
 
+    find_svm_gt(svm_cluster['labeled']['p'])
     evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False)
 
     return pos, neg, outlier_topscorer
@@ -670,7 +579,7 @@ def triplet_constraints_from_svm():
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
     print('Created {} triplet constraints.'.format(len(triplet_constraints)))
 
-    return triplet_constraints, triplet_weights
+    return triplet_constraints, triplet_weights.reshape(-1, 1)
 
 
 def get_neighborhood(data, sample_idcs, buffer=0., use_faiss=True):
@@ -732,7 +641,8 @@ def local_embedding(buffer=0.):
 
     else:
         tc = np.append(triplet_constraints, current_triplets, axis=0)
-        tw = np.mean(np.stack([triplet_weights, current_triplet_weights], axis=1), axis=1)        # TODO: BETTER SYSTEM FOR COMBINING WEIGHTS
+        print(triplet_weights.shape, current_triplet_weights.shape)
+        tw = np.mean(np.concatenate([triplet_weights, current_triplet_weights], axis=1), axis=1)        # TODO: BETTER SYSTEM FOR COMBINING WEIGHTS
 
     sample_idcs = np.concatenate([svm_cluster['labeled']['p'], svm_cluster['labeled']['n']])
     local_idcs, center, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
@@ -797,8 +707,6 @@ def local_embedding(buffer=0.):
     with open('_svm_prediction.pkl', 'wb') as f:
         pickle.dump(svm_data, f)
 
-    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=False, plot_GTE=True, compute_GTE=True)
-
 
 def multiclass_embed(current_graph=[]):
     global image_names, labels, n_clusters
@@ -826,3 +734,189 @@ def multiclass_embed(current_graph=[]):
     return graph
 
 
+def write_final_svm_output():
+    with open('_svm_prediction.pkl', 'rb') as f:
+        svm_prediction = pickle.load(f)
+
+    predicted_labels = -1 * np.ones((len(svm_prediction['labels']), 1))
+    predicted_labels[svm_prediction['local_indices'], 0] = svm_prediction['labels'][svm_prediction['local_indices']]
+
+    confidence = -1 * np.ones((len(svm_prediction['labels']), 1))
+    confidence[svm_prediction['local_indices'], 0] = np.abs(svm_prediction['distance'][svm_prediction['local_indices']])
+
+    confidence[svm_cluster['labeled']['p']] = 100
+    confidence[svm_cluster['labeled']['n']] = 100
+
+
+    # add the category labels to output file
+    with open('_svm_labels.pkl', 'rb') as f:
+        svm_label_dict = pickle.load(f)
+    if len(svm_label_dict['labels']) == 0:
+        svm_label_dict['labels'] = predicted_labels
+        svm_label_dict['confidence'] = confidence
+    else:
+        svm_label_dict['labels'] = np.concatenate(
+            [svm_label_dict['labels'], predicted_labels], axis=1)
+        svm_label_dict['confidence'] = np.concatenate(
+            [svm_label_dict['confidence'], confidence], axis=1)
+    with open('_svm_labels.pkl', 'wb') as f:
+        pickle.dump(svm_label_dict, f)
+
+    find_svm_gt(svm_cluster['labeled']['p'])
+    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
+             eval_local=False)
+
+
+def train_global_svm(n_global_negatives=100):
+    global svm_cluster, features, labels, image_names, svms
+    positives = svm_cluster['positives']
+    negatives = svm_cluster['negatives']
+
+    # grid search
+    parameters = {'kernel': ['linear'], 'C': [1],
+                  'class_weight': [{0: 1, 1: 1}, {0: 10, 1: 1}]}
+    svc = SVC(probability=True)  # TODO: disable probability TRUE if unused
+    clf = GridSearchCV(svc, parameters)
+
+    outer_idcs = np.array([idx for idx in range(len(features)) if idx not in np.concatenate([positives, negatives])])
+    global_negatives = np.random.choice(outer_idcs, n_global_negatives, replace=False)
+
+    train_data = np.concatenate([features[positives], features[negatives], features[global_negatives]])
+    train_labels = np.concatenate([np.ones(len(positives)), np.zeros(len(negatives) + len(global_negatives))])
+
+    print('Train global SVM on user local SVM...')
+    tic = time()
+    clf.fit(X=train_data, y=train_labels)
+    toc = time()
+    print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
+    print(clf.best_params_)
+    svms[-1] = clf
+
+    print('Predict class membership for whole dataset...')
+    predicted_labels = clf.predict(features)
+    d_decision_boundary = clf.decision_function(features)
+    labels['confidence'] = np.array(['confident' if abs(d) > 1.0 else 'unsure' for d in d_decision_boundary])
+    labels['svm label'] = np.array(['svm pos' if p else 'svm neg' for p in predicted_labels])
+
+    # save test prediction and distance to decision boundary
+    with open('_svm_prediction.pkl', 'wb') as f:
+        pickle.dump({'labels': predicted_labels, 'distance': d_decision_boundary,
+                     'image_names': image_names, 'local_indices': np.concatenate([positives, negatives]),
+                     'global_negatives': n_global_negatives,
+                     'idcs_positives_train': svm_cluster['labeled']['p'],
+                     'idcs_negatives_train': svm_cluster['labeled']['n']}, f)
+    print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
+
+    # add the category labels to output file
+    with open('_svm_labels.pkl', 'rb') as f:
+        svm_label_dict = pickle.load(f)
+    if len(svm_label_dict['labels']) == 0:
+        svm_label_dict['labels'] = predicted_labels.reshape(len(predicted_labels), 1)
+        svm_label_dict['confidence'] = d_decision_boundary.reshape(len(predicted_labels), 1)
+    else:
+        svm_label_dict['labels'] = np.concatenate([svm_label_dict['labels'], predicted_labels.reshape(len(predicted_labels), 1)], axis=1)
+        svm_label_dict['confidence'] = np.concatenate([svm_label_dict['confidence'], np.abs(d_decision_boundary).reshape(len(predicted_labels), 1)], axis=1)
+    with open('_svm_labels.pkl', 'wb') as f:
+        pickle.dump(svm_label_dict, f)
+
+    find_svm_gt(svm_cluster['labeled']['p'])
+    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
+             eval_local=False)
+
+
+def local_embedding_with_all_positives(confidence_threshold=0.5, buffer=0.):
+    """Compute local low dimensional embedding.
+        Args:
+            buffer: fraction of radius from which to choose fix points outside of data sphere
+    """
+    global prev_embedding, svm_cluster, features, kwargs, triplet_constraints, triplet_weights, \
+        current_triplet_weights, current_triplets, svms, labels
+    global labels
+
+    # a little out of context: save svms
+    with open('_svms.pkl', 'wb') as f:
+        pickle.dump(svms, f)
+
+    current_triplets, current_triplet_weights = triplet_constraints_from_svm()
+
+    if triplet_constraints is None:
+        tc = current_triplets
+        tw = current_triplet_weights
+
+    else:
+        tc = np.append(triplet_constraints, current_triplets, axis=0)
+        print(triplet_weights.shape, current_triplet_weights.shape)
+        tw = np.mean(np.concatenate([triplet_weights, current_triplet_weights], axis=1),
+                     axis=1)  # TODO: BETTER SYSTEM FOR COMBINING WEIGHTS
+
+    sample_idcs = np.concatenate([svm_cluster['labeled']['p'], svm_cluster['labeled']['n']])
+    local_idcs, center, radius = get_neighborhood(prev_embedding, sample_idcs, buffer=0.05, use_faiss=True)
+    local_idcs_soft, _, _ = get_neighborhood(prev_embedding, sample_idcs, buffer=buffer, use_faiss=True)
+
+    # add global positives to local margin
+    with open('_svm_prediction.pkl', 'rb') as f:
+        svm_dict = pickle.load(f)
+        positives = np.where(svm_dict['labels'] == 1)[0]
+        distance = svm_dict['distance']
+    outer_positives = [idx for idx in positives if idx not in svm_dict['local_indices']]
+    outer_positives = [idx for idx in outer_positives if abs(distance[idx]) >= confidence_threshold]
+
+    local_triplets = []
+    for t in tc:
+        local = True
+        for i in range(3):
+            if t[i] not in np.concatenate([local_idcs_soft, outer_positives]):
+                local = False
+                break
+        if local:
+            local_triplets.append(t)
+    local_triplets = np.array(local_triplets)
+    print('using {} local triplets'.format(len(local_triplets)))
+
+    # convert triplet indices to local selection
+    local_idx_to_idx = {li: i for i, li in enumerate(np.concatenate([local_idcs_soft, outer_positives]))}
+    for i, t in enumerate(local_triplets):
+        for j in range(local_triplets.shape[1]):
+            local_triplets[i, j] = local_idx_to_idx[t[j]]
+
+    # get soft margin points and use them as fix points to compute embedding
+    fix_points = set(local_idcs_soft).difference(local_idcs)
+    fix_points = np.array([local_idx_to_idx[li] for li in fix_points], dtype=np.long)
+    print('Local embedding using {} points and keeping {} fixed'.format(
+        len(np.concatenate([local_idcs_soft, outer_positives])), len(fix_points)))
+
+    # mark local indices and margin by labelling
+    label = np.array(['outer'] * len(features))
+    label[local_idcs_soft] = 'margin'
+    label[local_idcs] = 'inner'
+    labels['locality'] = label
+
+    # TODO: USE CURRENT EMBEDDING
+    # compute initialisation by shifting current embedding such that center is at origin
+    initial_Y = prev_embedding[np.concatenate([local_idcs_soft, outer_positives])] - center
+
+    local_kwargs = kwargs.copy()
+    # TODO: CHOOSE PERPLEXITY FOR FEW POINTS ACCORDINGLY
+    local_kwargs['perplexity'] = min(kwargs['perplexity'], (len(local_idcs) - 1) / 3)
+    assert local_kwargs['perplexity'] >= 5, 'please choose at least 14 local samples for svm'
+    print('perplexity: {}'.format(local_kwargs['perplexity']))
+
+    embedding = embedding_func(np.stack(features).astype(np.double)[np.concatenate([local_idcs_soft, outer_positives])],
+                               triplets=local_triplets,
+                               weights_triplets=tw[np.concatenate([local_idcs_soft, outer_positives])],
+                               position_constraints=np.zeros((1, 3)),
+                               fix_points=fix_points, initial_Y=initial_Y,
+                               center=None, radius=radius, contrib_cost_extent=1,
+                               # center=None because initial data is centered already
+                               **local_kwargs)
+
+    print('local center before: {} \tafter: {}'.format(center, np.mean(embedding + center, axis=0, keepdims=True)))
+    prev_embedding[np.concatenate([local_idcs_soft, outer_positives])] = embedding + center
+
+    # save local embedding and local triplets for evaluation of GTE
+    with open('_svm_prediction.pkl', 'rb') as f:
+        svm_data = pickle.load(f)
+    svm_data['local_embedding'] = embedding + center
+    svm_data['local_triplets'] = local_triplets
+    with open('_svm_prediction.pkl', 'wb') as f:
+        pickle.dump(svm_data, f)

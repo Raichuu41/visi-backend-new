@@ -20,11 +20,6 @@ from modify_snack import snack_embed_mod
 from faiss_master import faiss
 
 
-# DEAL WITH RANDOMNESS
-seed = 123
-np.random.seed(123)
-
-
 # LOAD DATA
 info_file = '../wikiart/datasets/info_artist_49_multilabel_test.hdf5'
 # info_file = '../wikiart/datasets/info_artist_49_style_test.hdf5'
@@ -60,7 +55,7 @@ def initial_embedding(features, embedding_func, **kwargs):
     embedding = embedding_func(np.stack(features).astype(np.double),
                                triplets=np.zeros((1, 3), dtype=np.long),     # dummy values
                                position_constraints=np.zeros((1, 3)),        # dummy values
-                               **kwargs).transpose()
+                               **kwargs)
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
     return embedding
@@ -86,7 +81,7 @@ def compute_graph(current_graph=[]):
     if len(current_graph) == 0:
         global image_names, features, labels, embedding_func, kwargs
         positions = initial_embedding(features, embedding_func, **kwargs)
-        nodes = construct_nodes(image_names, positions, labels)
+        nodes = construct_nodes(image_names, positions.transpose(), labels)
         return nodes, categories
 
     else:

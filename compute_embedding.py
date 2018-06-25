@@ -30,8 +30,7 @@ import h5py
 
 sys.path.append('/export/home/kschwarz/Documents/Masters/Modify_TSNE/')
 from modify_snack import snack_embed_mod
-sys.path.append('/export/home/kschwarz/anaconda3/envs/py27/lib/python2.7/site-packages/faiss-master/')
-import faiss
+from faiss_master import faiss
 from evaluate_svms import multiclass_embedding, multiclass_embedding_rf
 
 
@@ -56,14 +55,15 @@ np.random.seed(123)
 # labels = {'genre_labels': genre_labels, second_label + '_labels': second_labels}
 
 
-info_file = '../wikiart/datasets/info_artist_49_style_train_small.hdf5'
+info_file = '../wikiart/datasets/info_artist_49_multilabel_test.hdf5'
 # info_file = '../wikiart/datasets/info_artist_49_style_test.hdf5'
-feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_train_small.hdf5'
+# feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_train_small.hdf5'
+feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_multilabel_test_multilabel.hdf5'
 # feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_test.hdf5'
 # feature_file = '../SmallNets/output/Inception3_info_artist_49_test.hdf5'
 # feature_file = '../SmallNets/output/vgg16_artsiom_info_artist_49_test.hdf5'
 # feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_test_ap_labels_4.hdf5'
-class_labels = ['artist_name', 'style']
+class_labels = ['artist_name', 'style', 'genre', 'technique', 'century']
 
 info_dict = dd.io.load(info_file)['df']
 image_names = info_dict['image_id'].values.astype(str)
@@ -77,12 +77,22 @@ labels = {k: list(info_dict[k].values) for k in info_dict.keys() if k in class_l
 svm_ground_truth = None
 
 
-def find_svm_gt(positives_labeled):
-    global labels, svm_ground_truth
-    lbls = np.array(labels['style'])[positives_labeled]
-    main_lbl = sorted(Counter(lbls).items(), key=lambda x: x[1])[-1][0]         # choose label that occurs most often
-    svm_ground_truth = np.array(labels['style']) == main_lbl
+def find_svm_gt(positives_labeled, negatives_labeled):
+    global labels, svm_ground_truth, class_labels
+    max_occurences = 0
+    main_lbl = None
+    for k in labels.keys():
+        if k not in class_labels:
+            continue
+        lbls = np.array(labels[k])[positives_labeled]
+        neg_lbls = np.array(labels[k])[negatives_labeled]
+        lbl, occurences = sorted(Counter(lbls).items(), key=lambda x: x[1])[-1]         # choose label that occurs most often
+        if occurences > max_occurences and lbl not in neg_lbls:
+            max_occurences = occurences
+            main_lbl = lbl
+            svm_ground_truth = np.array(labels[k]) == main_lbl
     print('svm ground truth was found to be "{}"'.format(main_lbl))
+    return main_lbl
 
 
 n_clusters = 10
@@ -258,6 +268,12 @@ def compute_graph(current_graph=[]):
         return graph
 
     # DUMMY EDIT!!!
+    usr_labels = infer_labels(current_graph['nodes'])
+    print(usr_labels.shape)
+    if usr_labels is not None:
+        for i in usr_labels.shape[1]:
+            name = 'usr_' + str(i+1)
+            labels[name] = usr_labels[:, i]
     return create_graph(image_names, prev_embedding, labels=labels)
 
     print('Update graph...')
@@ -296,8 +312,8 @@ def learn_svm(positives, negatives, counter, grid_search=True):
     n_negatives = len(negatives)
 
     print('n positives: {}\nn negatives: {}'.format(n_positives, n_negatives))
-    idcs_positives = np.unique(np.array([p['index'] for p in positives], dtype=int))
-    idcs_negatives = np.unique(np.array([n['index'] for n in negatives], dtype=int))
+    idcs_positives = np.unique(np.array(positives, dtype=int))
+    idcs_negatives = np.unique(np.array(negatives, dtype=int))
 
     if n_positives == 0 or n_negatives == 0:
         return list(idcs_positives), list(idcs_negatives)
@@ -423,8 +439,9 @@ def learn_svm(positives, negatives, counter, grid_search=True):
 
     print('trained {} svms'.format(len(svms)))
 
-    find_svm_gt(svm_cluster['labeled']['p'])
-    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False)
+    main_label = find_svm_gt(svm_cluster['labeled']['p'], svm_cluster['labeled']['n'])
+    if main_label is not None:
+        evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False)
 
     return pos, neg, outlier_topscorer
 
@@ -762,11 +779,12 @@ def write_final_svm_output():
     with open('_svm_labels.pkl', 'wb') as f:
         pickle.dump(svm_label_dict, f)
 
-    find_svm_gt(svm_cluster['labeled']['p'])
-    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
-             eval_local=False)
+    main_label = find_svm_gt(svm_cluster['labeled']['p'], svm_cluster['labeled']['n'])
+    if main_label is not None:
+        evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
+                 eval_local=False)
 
-    return svm_cluster['positives']
+    return list(svm_cluster['positives'])
 
 
 def train_global_svm(n_global_negatives=100):
@@ -821,9 +839,10 @@ def train_global_svm(n_global_negatives=100):
     with open('_svm_labels.pkl', 'wb') as f:
         pickle.dump(svm_label_dict, f)
 
-    find_svm_gt(svm_cluster['labeled']['p'])
-    evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
-             eval_local=False)
+    main_label = find_svm_gt(svm_cluster['labeled']['p'], svm_cluster['labeled']['n'])
+    if main_label is not None:
+        evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False,
+                 eval_local=False)
 
 
 def local_embedding_with_all_positives(confidence_threshold=0.5, buffer=0.):
@@ -922,3 +941,21 @@ def local_embedding_with_all_positives(confidence_threshold=0.5, buffer=0.):
     svm_data['local_triplets'] = local_triplets
     with open('_svm_prediction.pkl', 'wb') as f:
         pickle.dump(svm_data, f)
+
+
+def infer_labels(graph):
+    global class_labels
+    nodes = graph.keys()
+    print(len(graph[nodes[0]]['labels']), len(class_labels))
+    if len(graph[nodes[0]]['labels']) != len(class_labels):
+        print('User added {} new categories.'.format(len(graph[nodes[0]]['labels']) - len(class_labels)))
+        usr_labels = []
+        for node in nodes:
+            usr_labels.append(node['labels'][len(class_labels):])
+        usr_labels = np.stack(usr_labels)
+        with open('_usr_labels.pkl', 'wb') as f:
+            pickle.dump({'labels': usr_labels}, f)
+        return usr_labels.reshape((len(nodes), len(graph[nodes[0]]['labels']) - len(class_labels)))
+    else:
+        return None
+

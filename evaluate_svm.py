@@ -3,8 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 import sys
-sys.path.append('/export/home/kschwarz/anaconda3/envs/py27/lib/python2.7/site-packages/faiss-master/')
-import faiss
+from faiss_master import faiss
 import warnings
 from sklearn.metrics import precision_recall_fscore_support
 

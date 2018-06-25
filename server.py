@@ -97,19 +97,19 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
         if(self.path == "/stopSvm"):
             print("post /stopSvm")
-                ### POST Request Header ###
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
+            ### POST Request Header ###
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
 
-                # get body from request
-                #content_len = int(self.headers['Content-Length'])
-                #body = self.rfile.read(content_len)
+            # get body from request
+            #content_len = int(self.headers['Content-Length'])
+            #body = self.rfile.read(content_len)
 
-                # convert body to list
-                #data = json.loads(str(body).decode('utf-8'))  # python 2
-                #data = json.loads(str(body, encoding='utf-8'))      # python 3
-                #print(data)
+            # convert body to list
+            #data = json.loads(str(body).decode('utf-8'))  # python 2
+            #data = json.loads(str(body, encoding='utf-8'))      # python 3
+            #print(data)
 
             # Katjas code goes here
             # triplet_constraints_from_svm()
@@ -122,8 +122,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             data = json.dumps({'group': group_ids}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-
-        return
 
 if __name__ == "__main__":
     # config

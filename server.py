@@ -10,9 +10,17 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-# from SVM_embedding_global import compute_graph, learn_svm, multiclass_embed, local_embedding
-from compute_embedding import compute_graph, learn_svm, local_embedding, train_global_svm, \
-    local_embedding_with_all_positives, write_final_svm_output
+from graph_embedding import compute_graph
+import numpy as np
+from svm import svm_iteration, local_update
+# from compute_embedding import compute_graph, learn_svm, local_embedding, train_global_svm, \
+#     local_embedding_with_all_positives, write_final_svm_output
+
+# Katja's global variables
+embedding = None
+nodes = None
+usr_labeled_idcs = None
+
 """
 def format_string(graph):
     s = str(graph)
@@ -47,6 +55,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
+        global embedding, nodes, usr_labeled_idcs
         if(self.path == "/nodes"):
             print("post /nodes")
             ### POST Request Header ###
@@ -65,11 +74,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # print(data)
 
             # Katjas code goes here
-            nodes, categorys = compute_graph(data)
+            nodes, categories = compute_graph(data, embedding)
+            embedding = None    # enable update from graph values --> new positions set by user
             # data = multiclass_embed(data)
 
             # make json
-            data = json.dumps({'nodes': nodes, 'categorys': categorys}).encode()
+            data = json.dumps({'nodes': nodes, 'categorys': categories}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
         if(self.path == "/trainSvm"):
@@ -89,10 +99,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # print(data)
 
             # Katjas code goes here
-            p, n, t = learn_svm(data['p'], data['n'], data['count'])
+            usr_labeled_idcs = np.concatenate([data['p'], data['n']])
+            p, n = svm_iteration(data['p'], data['n'], data['count'], {'nodes': nodes})     # TODO: REMOVE NASTY HACK WITH NODES
+            # p, n, t = learn_svm(data['p'], data['n'], data['count'])
 
             # make json
-            data = json.dumps({'p': p, 'n': n, 't': t}).encode()
+            data = json.dumps({'p': p, 'n': n, 't': []}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
         if(self.path == "/stopSvm"):
@@ -112,14 +124,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #print(data)
 
             # Katjas code goes here
-            # triplet_constraints_from_svm()
-            # train_global_svm()
-            # local_embedding_with_all_positives(buffer=0.2, confidence_threshold=0.2)
-            group_ids = write_final_svm_output()
-            local_embedding(buffer=0.2)
+            embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
+            # group_ids = write_final_svm_output()
+            # local_embedding(buffer=0.2)
 
             # make json
-            data = json.dumps({'group': group_ids}).encode()
+            data = json.dumps({'group': local_positives}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
 

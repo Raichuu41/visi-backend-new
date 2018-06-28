@@ -6,6 +6,7 @@ import sys
 from faiss_master import faiss
 import warnings
 from sklearn.metrics import precision_recall_fscore_support
+from collections import Counter
 
 
 def generate_triplets(positives, negatives, N, n_pos_pa=1, n_neg_pp=1, seed=123,
@@ -215,3 +216,20 @@ def evaluate(ground_truth, plot_decision_boundary=True, plot_GTE=True, compute_G
 
 
     reset = False
+
+
+def find_svm_gt(positives_labeled, negatives_labeled, labels):
+    print('Called find_svm_gt.')
+    max_occurences = 0
+    main_lbl = None
+    svm_ground_truth = None
+    for category_labels in labels.transpose():
+        lbls = category_labels[positives_labeled]
+        neg_lbls = category_labels[negatives_labeled]
+        lbl, occurences = sorted(Counter(lbls).items(), key=lambda x: x[1])[-1]         # choose label that occurs most often
+        if occurences > max_occurences and lbl not in neg_lbls:
+            max_occurences = occurences
+            main_lbl = lbl
+            svm_ground_truth = category_labels == main_lbl
+    print('\tsvm ground truth was found to be "{}"'.format(main_lbl))
+    return main_lbl, svm_ground_truth

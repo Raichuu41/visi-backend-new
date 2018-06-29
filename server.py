@@ -21,6 +21,19 @@ embedding = None
 nodes = None
 usr_labeled_idcs = None
 
+
+def format_return_graph(graph):
+    def format_return_nodes(nodes):
+        formatted_nodes = {}
+        for k in nodes.keys():
+            n = nodes[k].copy()
+            idx = n.pop('index')
+            formatted_nodes[idx] = n
+        return formatted_nodes
+    if graph['nodes'] is not None and len(graph['nodes']) != 0:
+        graph['nodes'] = format_return_nodes(graph['nodes'])
+
+
 """
 def format_string(graph):
     s = str(graph)
@@ -72,6 +85,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
             # print(data)
+            format_return_graph(data)
 
             # Katjas code goes here
             nodes, categories = compute_graph(data, embedding)

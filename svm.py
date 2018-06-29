@@ -8,7 +8,7 @@ from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
 from time import time
 from globals import get_globals, dict_to_df
-from evaluate_svm import find_svm_gt, evaluate
+from eval_svm import evaluate
 import pickle
 
 
@@ -131,7 +131,8 @@ def make_suggestion(d_decision_boundary, idcs_train, n_hard=5, n_semihard=10, th
     return list(suggestion[0]), list(suggestion[1])
 
 
-def svm_iteration(positives, negatives, counter, current_graph, grid_search=True, frac_margin=0.1):
+def svm_iteration(positives, negatives, counter, current_graph, grid_search=True, frac_margin=0.1,
+                  plot_eval=False):
     global globals
     train_idcs = train_svm(positives, negatives, counter, grid_search)
     nodes = dict_to_df(current_graph['nodes'])
@@ -145,9 +146,11 @@ def svm_iteration(positives, negatives, counter, current_graph, grid_search=True
     d_decision_boundary = np.zeros(len(embedding))
     predicted[idcs], d_decision_boundary[idcs] = svm_predict(idcs)
 
-    main_label, svm_ground_truth = find_svm_gt(positives, negatives, globals.labels)
-    if main_label is not None:
-        evaluate(ground_truth=svm_ground_truth, plot_decision_boundary=True, plot_GTE=False, compute_GTE=False)
+    if plot_eval:
+        evaluate(local_idcs, train_idcs, predicted,
+                 d_decision_boundary, embedding, plot_GTE=True)
+    else:
+        evaluate(local_idcs, train_idcs, predicted)
 
     return make_suggestion(d_decision_boundary, train_idcs, n_hard=5, n_semihard=10, threshold=10)
 
@@ -179,6 +182,8 @@ def add_triplets_from_svm(svm_labels, nppa=1, nnpp=1):
         triplets = new_triplets
     else:
         triplets = np.concatenate([triplets, new_triplets])
+
+    print('Added {} triplets. Total number of triplets {}'.format(len(new_triplets), len(triplets)))
 
 
 def add_triplet_weights(d_decision_boundary, user_labeled_idcs ,value_range=(0, 1)):
@@ -238,7 +243,7 @@ def local_embedding(local_idcs, margin_idcs, embedding):
                                **kwargs)
     toc = time()
     print('Done. ({:2.0f}min {:2.1f}s)'.format((toc - tic) / 60, (toc - tic) % 60))
-    return embedding
+    return embedding + center
 
 
 def local_update(current_graph, local_queries, frac_margin=0.1):

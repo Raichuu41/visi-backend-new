@@ -40,10 +40,10 @@ def compute_graph(current_graph=[], embedding=None):
         return nodes, globals.categories
 
     else:
-        node_df = dict_to_df(current_graph)
+        node_df = dict_to_df(current_graph['nodes'])
         if embedding is None:
-            embedding = (node_df['x'], node_df['y'])
+            embedding = (node_df['x'].values, node_df['y'].values)
         else:
             embedding = embedding.transpose()
-        nodes = construct_nodes(node_df['name'], embedding.transpose(), node_df['labels'])
+        nodes = construct_nodes(node_df['name'].values, embedding, node_df['labels'].values)
         return nodes, globals.categories

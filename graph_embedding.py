@@ -45,5 +45,5 @@ def compute_graph(current_graph=[], embedding=None):
             embedding = (node_df['x'].values, node_df['y'].values)
         else:
             embedding = embedding.transpose()
-        nodes = construct_nodes(node_df['name'].values, embedding, node_df['labels'].values)
+    nodes = construct_nodes(node_df['name'].values, embedding, node_df['labels'].values)
         return nodes, globals.categories

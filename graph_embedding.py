@@ -46,4 +46,8 @@ def compute_graph(current_graph=[], embedding=None):
         else:
             embedding = embedding.transpose()
     nodes = construct_nodes(node_df['name'].values, embedding, node_df['labels'].values)
-        return nodes, globals.categories
+    return nodes, globals.categories
+
+
+def extract_labels(current_graph=[]):
+    pass

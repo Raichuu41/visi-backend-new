@@ -137,14 +137,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
             #print(data)
 
-                # Katjas code goes here
-                embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
+            # Katjas code goes here
+            embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
             # group_ids = write_final_svm_output()
             # local_embedding(buffer=0.2)
 
-                # make json
-                data = json.dumps({'group': local_positives}).encode()
-                self.wfile.write(data)  #body zurueckschicken
+            # make json
+            data = json.dumps({'group': local_positives}).encode()
+            self.wfile.write(data)  #body zurueckschicken
 
         if(self.path == "/updateLabels"):
             print("post /updateLabels")
@@ -154,16 +154,16 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
             # get body from request
-            #content_len = int(self.headers['Content-Length'])
-            #body = self.rfile.read(content_len)
+            content_len = int(self.headers['Content-Length'])
+            body = self.rfile.read(content_len)
 
             # convert body to list
-            #data = json.loads(str(body).decode('utf-8'))  # python 2
+            data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
             #print(data)
 
             # Katjas code goes here
-            katja_function(data.p, data.n)
+            print(data.keys())
 
             # make json
             #data = json.dumps({}).encode()

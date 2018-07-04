@@ -200,6 +200,8 @@ def find_svm_gt(positives_labeled, negatives_labeled, labels):
     for category_labels in labels.transpose():
         lbls = category_labels[positives_labeled]
         neg_lbls = category_labels[negatives_labeled]
+        if len(lbls) == 0:
+            continue
         lbl, occurences = sorted(Counter(lbls).items(), key=lambda x: x[1])[-1]         # choose label that occurs most often
         if occurences > max_occurences and lbl not in neg_lbls:
             max_occurences = occurences

@@ -159,15 +159,15 @@ app.use('/api', express.static('images'));
     res.send()
 }) */
 
-// set different image path for prod/dev mode
-let imgPath = '';
-
-if (process.env.NODE_ENV === 'development') {
-    // imgPath = `${__dirname}/images/images_3000/`;
-    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`
-} else {
-    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
-}
+//// set different image path for prod/dev mode
+//let imgPath = '';
+//
+//if (process.env.NODE_ENV === 'development') {
+//    // imgPath = `${__dirname}/images/images_3000/`;
+//    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`
+//} else {
+//    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
+//}
 
 if (!fs.existsSync(imgPath)) throw Error(`IMAGE PATH NOT EXISTS - ${imgPath}`);
 

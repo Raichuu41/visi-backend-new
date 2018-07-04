@@ -137,15 +137,40 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
             #print(data)
 
-            # Katjas code goes here
-            embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
+                # Katjas code goes here
+                embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
             # group_ids = write_final_svm_output()
             # local_embedding(buffer=0.2)
 
+                # make json
+                data = json.dumps({'group': local_positives}).encode()
+                self.wfile.write(data)  #body zurueckschicken
+
+        if(self.path == "/updateLabels"):
+            print("post /updateLabels")
+            ### POST Request Header ###
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            # get body from request
+            #content_len = int(self.headers['Content-Length'])
+            #body = self.rfile.read(content_len)
+
+            # convert body to list
+            #data = json.loads(str(body).decode('utf-8'))  # python 2
+            #data = json.loads(str(body, encoding='utf-8'))      # python 3
+            #print(data)
+
+            # Katjas code goes here
+            katja_function(data.p, data.n)
+
             # make json
-            data = json.dumps({'group': local_positives}).encode()
+            #data = json.dumps({}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
+
+        return
 
 if __name__ == "__main__":
     # config

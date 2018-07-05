@@ -11,11 +11,12 @@ sys.path.append('/export/home/kschwarz/Documents/Masters/Modify_TSNE/')
 from modify_snack import snack_embed_mod
 
 # LOAD DATA
-info_file = '../wikiart/datasets/info_artist_49_multilabel_test_subset_style_genre.hdf5'
+# info_file = '../wikiart/datasets/info_artist_49_multilabel_test_subset_style_genre.hdf5'
+info_file = '../wikiart/datasets/info_artist_49_multilabel_test.hdf5'
 # info_file = '../wikiart/datasets/info_artist_49_style_test.hdf5'
 # feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_train_small.hdf5'
-feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_multilabel_test_subset_style_genre_multilabel_subset_style_genre.hdf5'
-# feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_test.hdf5'
+# feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_multilabel_test_subset_style_genre_multilabel_subset_style_genre.hdf5'
+feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_multilabel_test_multilabel.hdf5'
 # feature_file = '../SmallNets/output/Inception3_info_artist_49_test.hdf5'
 # feature_file = '../SmallNets/output/vgg16_artsiom_info_artist_49_test.hdf5'
 # feature_file = '../SmallNets/output/MobileNetV2_info_artist_49_style_test_ap_labels_4.hdf5'

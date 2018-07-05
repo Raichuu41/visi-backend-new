@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from time import time
 from globals import get_globals, df_to_dict, dict_to_df
+import pickle
 
 
 globals = get_globals()
@@ -41,6 +42,7 @@ def compute_graph(current_graph=[], embedding=None):
 
     else:
         node_df = dict_to_df(current_graph['nodes'])
+        print(node_df.keys())
         if embedding is None:
             embedding = (node_df['x'].values, node_df['y'].values)
         else:
@@ -50,4 +52,15 @@ def compute_graph(current_graph=[], embedding=None):
 
 
 def extract_labels(current_graph=[]):
-    pass
+    nodes = dict_to_df(current_graph['nodes'])
+    labels = nodes['labels'].values
+    img_name = nodes['name'].values
+    labels = np.stack(labels)
+    categories = globals.categories
+    if labels.shape[1] > globals.labels.shape[1]:
+        usr_labels = labels[:, 5:]
+        with open('_user_labels.pkl', 'wb') as f:
+            pickle.dump({'image_name': img_name, 'labels': usr_labels}, f)
+        for i in range(usr_labels.shape[1]):
+            categories.append('usr_' + str(i+1))
+    return nodes, categories

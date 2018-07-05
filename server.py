@@ -10,7 +10,7 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from graph_embedding import compute_graph
+from graph_embedding import compute_graph, extract_labels
 import numpy as np
 from svm import svm_iteration, local_update
 # from compute_embedding import compute_graph, learn_svm, local_embedding, train_global_svm, \
@@ -139,8 +139,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # Katjas code goes here
             embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
-            # group_ids = write_final_svm_output()
-            # local_embedding(buffer=0.2)
 
             # make json
             data = json.dumps({'group': local_positives}).encode()
@@ -162,11 +160,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
             #print(data)
 
+            format_return_graph(data)
             # Katjas code goes here
-            print(data.keys())
+            nodes, categories = extract_labels(data)
 
             # make json
-            #data = json.dumps({}).encode()
+            data = json.dumps({'nodes': nodes, 'categorys': categories}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
 

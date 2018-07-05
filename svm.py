@@ -23,8 +23,6 @@ np.random.seed(123)
 svms = []
 triplets = None
 triplet_weights = None
-with open('_svm_labels.pkl', 'wb') as f:
-    pickle.dump({'labels': np.array([]), 'confidence': np.array([])}, f)
 
 
 def get_areas(embedding, query_idcs, frac_margin=0.):
@@ -49,8 +47,6 @@ def get_areas(embedding, query_idcs, frac_margin=0.):
 def train_svm(positives, negatives, counter, grid_search=True):
     global globals, svms
     print('Called train_local_svm.')
-    print('\tPositives: {}\n\t{}'.format(positives, globals.labels[positives, 2]))
-    print('\tNegatives: {}\n\t{}'.format(negatives, globals.labels[negatives, 2]))
     # format input data and correct input if necessary
     idcs_positives = np.unique(np.array(positives, dtype=int))
     idcs_negatives = np.unique(np.array(negatives, dtype=int))
@@ -76,7 +72,7 @@ def train_svm(positives, negatives, counter, grid_search=True):
     if grid_search:
         parameters = {'kernel': ('linear', 'rbf'),
                       'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}, 'balanced']}
-        svc = SVC(probability=True, C=5)                         # TODO: disable probability TRUE if unused
+        svc = SVC(probability=True, C=10)                         # TODO: disable probability TRUE if unused
         clf = GridSearchCV(svc, parameters)
     else:
         clf = SVC(kernel='rbf', C=10, gamma='auto', class_weight='balanced', probability=True)  # TODO: disable probability TRUE if unused
@@ -259,8 +255,7 @@ def local_update(current_graph, local_queries, frac_margin=0.1):
     predicted = -1 * np.ones(len(embedding), dtype=int)
     d_decision_boundary = np.zeros(len(embedding))
     predicted[idcs], d_decision_boundary[idcs] = svm_predict(idcs)
-    print(idcs)
-    print(predicted[idcs])
+
     add_triplets_from_svm(predicted, nppa=5, nnpp=8)
     add_triplet_weights(d_decision_boundary, local_queries, value_range=(0.5, 2))
 

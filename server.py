@@ -10,28 +10,53 @@ import time
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
-from graph_embedding import compute_graph, extract_labels
-import numpy as np
-from svm import svm_iteration, local_update
-# from compute_embedding import compute_graph, learn_svm, local_embedding, train_global_svm, \
-#     local_embedding_with_all_positives, write_final_svm_output
+#from compute_embedding_snack import compute_graph
+import time, threading
+import requests
+from random import uniform
 
-# Katja's global variables
-embedding = None
-nodes = None
-usr_labeled_idcs = None
+StartTime = time.time()
 
 
-def format_return_graph(graph):
-    def format_return_nodes(nodes):
-        formatted_nodes = {}
-        for k in nodes.keys():
-            n = nodes[k].copy()
-            idx = n.pop('index')
-            formatted_nodes[idx] = n
-        return formatted_nodes
-    if graph['nodes'] is not None and len(graph['nodes']) != 0:
-        graph['nodes'] = format_return_nodes(graph['nodes'])
+def update_embedding_handler(socket_id):
+    print('action ! -> time : {:.1f}s'.format(time.time()-StartTime))
+    nodes = []
+    for x in range(0, 2400):
+        nodes.append({'id': x, 'x': round(uniform(0, 25), 2), 'y': round(uniform(0, 25))})
+
+    headers = {'content-type': 'application/json'}
+    payload = {'nodes': nodes, 'socket_id': socket_id}
+    #print(payload)
+    response = requests.post("http://localhost:3000/api/v1/updateEmbedding", data=json.dumps(payload), headers=headers)
+    print(response)
+
+
+class SetInterval:
+    """
+    inspired from https://stackoverflow.com/questions/2697039/python-equivalent-of-setinterval/48709380#48709380
+    """
+    def __init__(self, interval, action):
+        self.socket_id = ''
+        self.interval = interval
+        self.action = action
+        self.stopEvent = threading.Event()
+        self.thread = threading.Thread(target=self.__set_interval)
+        #self.thread.start()
+        #self.next_time = 0
+
+    def __set_interval(self):
+        next_time = time.time() + self.interval
+        while not self.stopEvent.wait(next_time-time.time()):
+            next_time += self.interval
+            self.action(self.socket_id)
+
+    def start(self):
+        print('start timer')
+        self.thread.start()
+
+    def cancel(self):
+        print('stop timer')
+        self.stopEvent.set()
 
 
 """
@@ -50,8 +75,20 @@ def get_graph(userData = []):
         return f.read()
 """
 
-## MyHTTPHandler beschreibt den Umgang mit HTTP Requests
+id =''
+
 class MyHTTPHandler(BaseHTTPRequestHandler):
+
+
+    """
+    ### MyHTTPHandler beschreibt den Umgang mit HTTP Requests
+    """
+    #http://donghao.org/2015/06/18/override-the-__init__-of-basehttprequesthandler-in-python/
+    def __init__(self, request, client_address, server):
+        self.socket_id = ''
+        self.inter = SetInterval(0.6, update_embedding_handler)
+
+        BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
     def do_OPTIONS(self):
         self.send_response(200, "ok")
@@ -61,15 +98,13 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
         self.end_headers()
 
-
     def do_POST(self):
         """
         definiert den Umgang mit POST Requests
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
-        global embedding, nodes, usr_labeled_idcs
-        if(self.path == "/nodes"):
+        if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
             self.send_response(200)
@@ -84,19 +119,16 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            # print(data)
-            format_return_graph(data)
+            print(data)
 
             # Katjas code goes here
-            nodes, categories = compute_graph(data, embedding)
-            embedding = None    # enable update from graph values --> new positions set by user
-            # data = multiclass_embed(data)
+            data = compute_graph(data)
 
             # make json
-            data = json.dumps({'nodes': nodes, 'categorys': categories}).encode()
+            data = json.dumps(data).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-        if(self.path == "/trainSvm"):
+        if self.path == "/trainSvm":
             print("post /trainsvm")
             ### POST Request Header ###
             self.send_response(200)
@@ -110,18 +142,16 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            # print(data)
+            print(data)
 
             # Katjas code goes here
-            usr_labeled_idcs = np.concatenate([data['p'], data['n']])
-            p, n = svm_iteration(data['p'], data['n'], data['count'], {'nodes': nodes})     # TODO: REMOVE NASTY HACK WITH NODES
-            # p, n, t = learn_svm(data['p'], data['n'], data['count'])
+            p, n = katja_function(data.p, data.n)
 
             # make json
-            data = json.dumps({'p': p, 'n': n, 't': []}).encode()
+            data = json.dumps({p: p, n: n}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-        if(self.path == "/stopSvm"):
+        if self.path == "/stopSvm":
             print("post /stopSvm")
             ### POST Request Header ###
             self.send_response(200)
@@ -138,14 +168,37 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #print(data)
 
             # Katjas code goes here
-            embedding, local_positives = local_update({'nodes': nodes}, usr_labeled_idcs)              # TODO: REMOVE NASTY HACK WITH NODES and train idcs
+            p, n = katja_function(data.p, data.n)
 
             # make json
-            data = json.dumps({'group': local_positives}).encode()
+            #data = json.dumps({p: p, n: n}).encode()
+            self.wfile.write("stopped Svm")  #body zurueckschicken
+
+        if self.path == "/updateLabels":
+            print("post /updateLabels")
+            ### POST Request Header ###
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            # get body from request
+            #content_len = int(self.headers['Content-Length'])
+            #body = self.rfile.read(content_len)
+
+            # convert body to list
+            #data = json.loads(str(body).decode('utf-8'))  # python 2
+            #data = json.loads(str(body, encoding='utf-8'))      # python 3
+            #print(data)
+
+            # Katjas code goes here
+            katja_function(data.p, data.n)
+
+            # make json
+            #data = json.dumps({}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-        if(self.path == "/updateLabels"):
-            print("post /updateLabels")
+        if self.path == "/startUpdateEmbedding":
+            print("post /startUpdateEmbedding")
             ### POST Request Header ###
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -156,20 +209,62 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             body = self.rfile.read(content_len)
 
             # convert body to list
-            data = json.loads(str(body).decode('utf-8'))  # python 2
-            #data = json.loads(str(body, encoding='utf-8'))      # python 3
+            body = json.loads(str(body).decode('utf-8'))  # python 2
+            # data = json.loads(str(body, encoding='utf-8'))      # python 3
+            #print(body)
+
+            #print(self.socket_id)
+            self.socket_id = body['socketId']
+            id = body['socketId']
+            print(id)
+            print(self.socket_id)
+
+            data = body['nodes']
             #print(data)
 
-            format_return_graph(data)
             # Katjas code goes here
-            nodes, categories = extract_labels(data)
+            #katja_function(data.p, data.n)
+
+            # TODO was ist wenn das mehrfach gestartet wird
+            # self.inter = SetInterval(0.6, update_embedding_handler, id)
+            self.inter.socket_id = id
+            self.inter.start()
+            t = threading.Timer(5, self.inter.cancel)
+            t.start()
 
             # make json
-            data = json.dumps({'nodes': nodes, 'categorys': categories}).encode()
-            self.wfile.write(data)  #body zurueckschicken
+            # data = json.dumps({}).encode()
+            self.wfile.write('update_embedding started for ' + str(self.socket_id))  # body zurueckschicken
 
+        if self.path == "/stopUpdateEmbedding":
+            print("post /stopUpdateEmbedding")
+            ### POST Request Header ###
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            # get body from request
+            # content_len = int(self.headers['Content-Length'])
+            # body = self.rfile.read(content_len)
+
+            # convert body to list
+            # data = json.loads(str(body).decode('utf-8'))  # python 2
+            # data = json.loads(str(body, encoding='utf-8'))      # python 3
+            # print(data)
+
+            # Katjas code goes here
+            print(self.socket_id)
+            self.inter.cancel()
+            #t = threading.Timer(5, self.inter.cancel)
+            #t.start()
+
+            #print(id)
+            # make json
+            # data = json.dumps({}).encode()
+            self.wfile.write('update_embedding stopped for ' + str(self.socket_id))  # body zurueckschicken
 
         return
+
 
 if __name__ == "__main__":
     # config

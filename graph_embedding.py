@@ -40,15 +40,23 @@ def compute_graph(current_graph=[], embedding=None):
         nodes = construct_nodes(globals.image_names, positions.transpose(), globals.labels)
         return nodes, globals.categories
 
+    node_df = dict_to_df(current_graph['nodes'])
+    if embedding is None:
+        embedding = (node_df['x'].values, node_df['y'].values)
     else:
-        node_df = dict_to_df(current_graph['nodes'])
-        print(node_df.keys())
-        if embedding is None:
-            embedding = (node_df['x'].values, node_df['y'].values)
-        else:
-            embedding = embedding.transpose()
+        embedding = embedding.transpose()
     nodes = construct_nodes(node_df['name'].values, embedding, node_df['labels'].values)
-    return nodes, globals.categories
+    return nodes, extract_categories(node_df)
+
+
+def extract_categories(nodes):
+    labels = np.stack(nodes['labels'].values)
+    categories = globals.categories[:]              # slice all for making a copy
+    if labels.shape[1] > globals.labels.shape[1]:
+        usr_labels = labels[:, 5:]
+        for i in range(usr_labels.shape[1]):
+            categories.append('usr_' + str(i + 1))
+    return categories
 
 
 def extract_labels(current_graph=[]):
@@ -56,11 +64,12 @@ def extract_labels(current_graph=[]):
     labels = nodes['labels'].values
     img_name = nodes['name'].values
     labels = np.stack(labels)
-    categories = globals.categories
+    categories = globals.categories[:]              # slice all for making a copy
     if labels.shape[1] > globals.labels.shape[1]:
         usr_labels = labels[:, 5:]
         with open('_user_labels.pkl', 'wb') as f:
             pickle.dump({'image_name': img_name, 'labels': usr_labels}, f)
         for i in range(usr_labels.shape[1]):
             categories.append('usr_' + str(i+1))
-    return nodes, categories
+        print('Saved user labels to _user_labels.pkl.')
+    return current_graph['nodes'], categories

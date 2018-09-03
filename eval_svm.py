@@ -8,6 +8,7 @@ import warnings
 from sklearn.metrics import precision_recall_fscore_support
 from collections import Counter
 from globals import get_globals
+import deepdish as dd
 
 
 def generate_triplets(positives, negatives, N, n_pos_pa=1, n_neg_pp=1, seed=123,
@@ -220,3 +221,24 @@ def evaluate(local_idcs, train_idcs, predictions,
     if main_label is not None:
         make_evaluation(local_idcs, train_idcs, predictions, svm_ground_truth,
                         d_decision_boundary, embedding, plot_GTE)
+
+
+
+def label_file_statistics(label_file, info_file, category, used_labels):
+    gt = dd.io.load(info_file)['df'][category].values
+    with open(label_file, 'rb') as f:
+        data = pickle.load(f)
+    image_names = data['image_name']
+    assert np.all(image_names == dd.io.load(info_file)['df']['image_id'].values), 'image names do not match'
+    labels = data['labels']
+    precision, recall = [], []
+    for l in used_labels:
+        (_, prec), (_, rec), _, _ = precision_recall_fscore_support(gt==l, labels==l)
+        precision.append(prec)
+        recall.append(rec)
+    precision = np.mean(precision)
+    recall = np.mean(recall)
+    frac_labeled = np.sum(labels != None) * 1.0 / np.sum(np.isin(gt, used_labels))
+
+    print('Label file statistics:\n\tavg precision: {}\n\tavg recall: {}\n\tfrac labeled: {}'
+          .format(precision, recall, frac_labeled))

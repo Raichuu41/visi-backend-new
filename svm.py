@@ -72,10 +72,10 @@ def train_svm(positives, negatives, counter, grid_search=True):
     if grid_search:
         parameters = {'kernel': ('linear', 'rbf'),
                       'class_weight': [{0: 1, 1: 0.2}, {0: 1, 1: 1}, {0: 1, 1: 5}, 'balanced']}
-        svc = SVC(probability=True, C=10)                         # TODO: disable probability TRUE if unused
+        svc = SVC(probability=True, C=15)                         # TODO: disable probability TRUE if unused
         clf = GridSearchCV(svc, parameters)
     else:
-        clf = SVC(kernel='rbf', C=10, gamma='auto', class_weight='balanced', probability=True)  # TODO: disable probability TRUE if unused
+        clf = SVC(kernel='rbf', C=15, gamma='auto', class_weight='balanced', probability=True)  # TODO: disable probability TRUE if unused
     if counter == 0:        # add new SVM to list
         svms.append(clf)
     else:       # overwrite SVM from previous round

@@ -16,6 +16,7 @@ from models import mobilenet_v1, mobilenet_v2, squeezenet, vgg16_bn, inception_v
 sys.path.append('../FullPipeline')
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config
 import torch.backends.cudnn as cudnn
+from collections import Counter
 
 
 
@@ -45,12 +46,12 @@ def create_valset(val_file, im_path, val_transform, labels_to_ints_train):
     classes = labels_to_ints_train.keys()
     valset = Wikiart(path_to_info_file=val_file, path_to_images=im_path,
                       classes=classes, transform=val_transform)
-    valid_samples = np.array([True] * len(valset))
+    valid_samples = np.array([False] * len(valset))
     for c in classes:
         labels = labels_to_ints_train[c].keys()
         assert np.all(np.isin(labels, valset.labels_to_ints[c].keys())), \
             'some labels of {} are not in valset'.format(labels)        # check validity of labels
-        valid_samples *= valset.df[c].isin(labels).values
+        valid_samples = np.logical_or(valid_samples, valset.df[c].isin(labels).values)            # if there is one label valid use it as sample
 
     valset.df = valset.df[valid_samples]
     valset.df.index = range(len(valset))
@@ -70,6 +71,7 @@ def train_multiclass(train_file, test_file, stat_file,
                      epochs=100, batch_size=32, lr=1e-4, momentum=0.9,
                      log_interval=10, log_dir='runs',
                      exp_name=None, seed=123):
+    argvars = locals().copy()
     torch.manual_seed(seed)
 
     # LOAD DATASET
@@ -165,7 +167,11 @@ def train_multiclass(train_file, test_file, stat_file,
     # allow auto-tuner to find best algorithm for the hardware
     cudnn.benchmark = True
 
-    write_config(locals(), os.path.join(log_dir, expname))
+    with open(label_file, 'rb') as f:
+        labels = pickle.load(f)['labels']
+        n_labeled = '\t'.join([str(Counter(l).items()) for l in labels.transpose()])
+
+    write_config(argvars, os.path.join(log_dir, expname), extras={'n_labeled': n_labeled})
 
 
     # ININTIALIZE TRAINING
@@ -211,10 +217,10 @@ def train_multiclass(train_file, test_file, stat_file,
             outputs = net(data)
             preds = [torch.max(outputs[i], 1)[1] for i in range(len(classes))]
 
-            loss = Variable(torch.Tensor([0])).type_as(data[0])
+            loss = Variable(torch.Tensor([0]), requires_grad=True).type_as(data[0])
             for i, o, t, p in zip(range(len(classes)), outputs, target, preds):
                 # filter unlabeled samples if there are any (have label -1)
-                labeled = (t != -1).nonzero().view(len(t))
+                labeled = (t != -1).nonzero().view(-1)
                 o, t, p = o[labeled], t[labeled], p[labeled]
                 loss += criterion(o, t)
                 # measure class accuracy and record loss
@@ -260,9 +266,9 @@ def train_multiclass(train_file, test_file, stat_file,
             outputs = net(data)
             preds = [torch.max(outputs[i], 1)[1] for i in range(len(classes))]
 
-            loss = Variable(torch.Tensor([0])).type_as(data[0])
+            loss = Variable(torch.Tensor([0]), requires_grad=True).type_as(data[0])
             for i, o, t, p in zip(range(len(classes)), outputs, target, preds):
-                labeled = (t != -1).nonzero().view(len(t))
+                labeled = (t != -1).nonzero().view(-1)
                 loss += criterion(o[labeled], t[labeled])
                 # measure class accuracy and record loss
                 class_acc[i].update((torch.sum(p[labeled] == t[labeled]).type(torch.FloatTensor) / t[labeled].size(0)).data)

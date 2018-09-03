@@ -53,6 +53,8 @@ def get_globals():
 
 
 def df_to_dict(dataframe):
+    if isinstance(dataframe, dict):
+        return dataframe
     dct = dataframe.to_dict(orient='index')
     # replace any values in arrays by lists
     array_keys = [k for k, v in dct[0].items() if isinstance(v, np.ndarray)]
@@ -63,4 +65,6 @@ def df_to_dict(dataframe):
 
 
 def dict_to_df(dictionary):
+    if isinstance(dictionary, pd.DataFrame):
+        return dictionary
     return pd.DataFrame.from_dict(dictionary, orient='index')

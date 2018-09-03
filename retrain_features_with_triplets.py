@@ -20,6 +20,7 @@ from triplets_utils import SemihardNegativeTripletSelector, RandomNegativeTriple
     HardestNegativeTripletSelector, KHardestNegativeTripletSelector, pdist
 from itertools import combinations
 import torch.backends.cudnn as cudnn
+from collections import Counter
 
 
 def create_trainset(train_file, label_file, im_path, train_transform, classes):
@@ -227,7 +228,11 @@ def train_multiclass(train_file, test_file, stat_file,
     # allow auto-tuner to find best algorithm for the hardware
     cudnn.benchmark = True
 
-    write_config(argvars, os.path.join(log_dir, expname))
+    with open(label_file, 'rb') as f:
+        labels = pickle.load(f)['labels']
+        n_labeled = '\t'.join([str(Counter(l).items()) for l in labels.transpose()])
+
+    write_config(argvars, os.path.join(log_dir, expname), extras={'n_labeled': n_labeled})
 
 
     # ININTIALIZE TRAINING
@@ -300,11 +305,11 @@ def train_multiclass(train_file, test_file, stat_file,
             for i in range(len(classes)):
                 outputs[i] = torch.nn.functional.normalize(outputs[i], p=2, dim=1)
 
-            loss = Variable(torch.Tensor([0]).cuda()) if use_cuda else Variable(torch.Tensor([0]))
+            loss = Variable(torch.Tensor([0]), requires_grad=True).type_as(data[0])
             n_triplets = 0
             for op, tgt in zip(outputs, target):
                 # filter unlabeled samples if there are any (have label -1)
-                labeled = (tgt != -1).nonzero().view(len(tgt))
+                labeled = (tgt != -1).nonzero().view(-1)
                 op, tgt = op[labeled], tgt[labeled]
 
                 l, nt = criterion(op, tgt)
@@ -363,11 +368,11 @@ def train_multiclass(train_file, test_file, stat_file,
             for i in range(len(classes)):
                 outputs[i] = torch.nn.functional.normalize(outputs[i], p=2, dim=1)
 
-            loss = Variable(torch.Tensor([0]).cuda()) if use_cuda else Variable(torch.Tensor([0]))
+            loss = Variable(torch.Tensor([0]), requires_grad=True).type_as(data[0])
             n_triplets = 0
             for op, tgt in zip(outputs, target):
                 # filter unlabeled samples if there are any (have label -1)
-                labeled = (tgt != -1).nonzero().view(len(tgt))
+                labeled = (tgt != -1).nonzero().view(-1)
                 op, tgt = op[labeled], tgt[labeled]
 
                 l, nt = criterion(op, tgt)
@@ -423,8 +428,8 @@ def train_multiclass(train_file, test_file, stat_file,
 
     # report best values
     best = torch.load(os.path.join(log_dir, expname + '_model_best.pth.tar'), map_location=lambda storage, loc: storage)
-    print('Finished training after epoch {}:\n\tbest acc score: {}\n\tacc: {}\n\t class acc: {}'
-          .format(best['epoch'], best['best_acc_score'], best['acc'], best['class_acc']))
+    print('Finished training after epoch {}:\n\tbest acc score: {}'
+          .format(best['epoch'], best['acc']))
     print('Best model mean accuracy: {}'.format(best_acc))
 
 #

@@ -205,3 +205,4 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
         epoch += 1
     outfile_embedding.close()
 
+

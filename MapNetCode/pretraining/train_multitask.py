@@ -16,6 +16,8 @@ from dataset import Wikiart
 from model import mobilenet_v2, vgg16_bn, narrownet, OctopusNet
 
 sys.path.append('/export/home/kschwarz/Documents/Masters/FullPipeline')
+import matplotlib as mpl
+mpl.use('TkAgg')
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config
 
 
@@ -51,11 +53,7 @@ parser.add_argument('--seed', default=123, type=int, help='Random state.')
 # sys.argv = []
 args = parser.parse_args()
 # args.model = 'mobilenet_v2'
-# args.device = 1
-
-defaults = {}
-for key in vars(args):
-    defaults[key] = parser.get_default(key)
+# args.device = 0
 
 
 def main():
@@ -77,8 +75,7 @@ def main():
         normalize,
     ])
     val_transform = transforms.Compose([
-                transforms.Resize(224),
-                transforms.CenterCrop(224),
+                transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 normalize,
     ])
@@ -131,7 +128,7 @@ def main():
     # allow auto-tuner to find best algorithm for the hardware
     cudnn.benchmark = True
 
-    write_config(args, os.path.join(log_dir, expname), defaults)
+    write_config(args, os.path.join(log_dir, expname))
 
     # ININTIALIZE TRAINING
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)

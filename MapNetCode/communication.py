@@ -10,12 +10,16 @@ def make_nodes(position, name=None, label=None):
         position (2 x N np.ndarray): x,y coordinates of datapoints
         label (list or np.ndarray), optional: labels for datapoints (to assign various labels to one point choose list
             of lists or np.ndarray of shape N x L, where L is the number of labels)"""
+    # format label
     if label is None:
         label = [None] * position.shape[1]
-    elif isinstance(label, np.ndarray):  # label is array with labels --> convert to list
-        label = label.tolist()
-    elif isinstance(label[0], np.ndarray):  # label is list of array labels --> convert to list
-        label = map(np.ndarray.tolist, label)
+    label = np.array(label)
+    assert label.ndim <= 2, 'a node can only have one dimensional labels'
+    if label.ndim == 1:
+        label = label.reshape(len(label), -1)
+    label = label.tolist()
+
+    # make nodes
     nodes = pd.DataFrame({'x': position[:, 0], 'y': position[:, 1], 'labels': list(label)})
     if name is not None:
         nodes['name'] = name

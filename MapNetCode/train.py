@@ -18,7 +18,7 @@ from dataset import IndexDataset
 sys.path.append('../FullPipeline')
 import matplotlib as mpl
 mpl.use('TkAgg')
-from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, plot_embedding_2d, load_weights
+from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, load_weights
 
 
 # if not os.getcwd().endswith('/MapNetCode'):

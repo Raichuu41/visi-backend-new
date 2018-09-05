@@ -96,8 +96,8 @@ if (process.env.NODE_ENV === 'development') {
     imgPath = `${__dirname}/../images/2582_sub_wikiarts/`;
     // imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
 } else {
-    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
-//    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
+//    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
+    imgPath = '/export/home/kschwarz/Documents/Data/Wikiart_artist49_images/';
 //    imgPath = `${__dirname}/images/`;
 //    imgPath = `/export/home/kschwarz/Documents/Masters/Sabine_Project/images-de-piles/`;
 //    imgPath = `/export/home/kschwarz/Documents/Data/tiny-imagenet-200/val/images/`;
@@ -290,6 +290,7 @@ io.sockets.on('connection', (socket) => {
                 });
                 // there are only nodes comming back from here
                 const data = await res.json();
+                console.log(data.categorys)
                 nodes = data.nodes;
                 categorys = data.categorys;
                 const diff2 = process.hrtime(time2);
@@ -304,6 +305,7 @@ io.sockets.on('connection', (socket) => {
         categorys.forEach((kat, i) => labels[i] = { name: kat, labels: [] });
 
         const nodeDataLength = Object.keys(nodes).length;
+        console.log(nodeDataLength)
         socket.emit('totalNodesCount', nodeDataLength);
 
 

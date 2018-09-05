@@ -6,7 +6,7 @@ Created on Thu Feb 27 09:25:24 2018
 ### Aktuelle Version als Hilfe ausgeben
 import os
 import sys
-import time
+import numpy as np
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
 #from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
@@ -14,6 +14,13 @@ import json
 import time, threading
 import requests
 from random import uniform
+sys.path.append('MapNetCode')
+from initialization import initialize
+from communication import make_nodes, read_nodes
+from train import train, get_modified, get_neighborhood
+
+# initialize global dataset information (image ids, features, embedding)
+dataset_info = None
 
 StartTime = time.time()
 
@@ -21,7 +28,7 @@ StartTime = time.time()
 def update_embedding_handler(socket_id):
     print('action ! -> time : {:.1f}s'.format(time.time()-StartTime))
     nodes = []
-    for x in range(0, 49):
+    for x in range(0, 2400):
         nodes.append({'id': x, 'x': round(uniform(0, 25), 2), 'y': round(uniform(0, 25))})
 
     headers = {'content-type': 'application/json'}
@@ -104,6 +111,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
+        global dataset_info
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -122,7 +130,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(data)
 
             # Katjas code goes here
-            data = compute_graph(data)
+            net, dataset_info = initialize()
+            nodes = make_nodes(position=dataset_info['position'],
+                               name=dataset_info['name'],
+                               label=dataset_info['label'])
+            categories = dataset_info['categories']
+            data = {'nodes': nodes, 'categories': categories}
 
             # make json
             data = json.dumps(data).encode()
@@ -145,10 +158,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(data)
 
             # Katjas code goes here
-            p, n = katja_function(data.p, data.n)
+            # p, n = katja_function(data.p, data.n)
 
             # make json
-            data = json.dumps({p: p, n: n}).encode()
+            # data = json.dumps({p: p, n: n}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
         if self.path == "/stopSvm":
@@ -168,7 +181,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #print(data)
 
             # Katjas code goes here
-            p, n = katja_function(data.p, data.n)
+            # p, n = katja_function(data.p, data.n)
 
             # make json
             #data = json.dumps({p: p, n: n}).encode()
@@ -191,7 +204,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #print(data)
 
             # Katjas code goes here
-            katja_function(data.p, data.n)
+            # katja_function(data.p, data.n)
 
             # make json
             #data = json.dumps({}).encode()
@@ -219,18 +232,27 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(id)
             print(self.socket_id)
 
-            data = body['nodes']
-            #print(data)
+            data = read_nodes(body['nodes'])
+            print(data)
 
             # Katjas code goes here
-            #katja_function(data.p, data.n)
+            new_position = np.stack([data['x'], data['y']], axis=1)
+            old_position = dataset_info['position']
+
+            idx_modified = get_modified(old_position, new_position)
+            idx_old_neighbors = get_neighborhood(old_position, idx_modified)
+            idx_new_neighbors = get_neighborhood(new_position, idx_modified)
+
+            train(net, dataset_info['feature'], dataset_info['position'],
+                  idx_modified, idx_old_neighbors, idx_new_neighbors,
+                  lr=1e-4, experiment_id=None, socket_id=self.socket_id)        # TODO: correct socket ID?
 
             # TODO was ist wenn das mehrfach gestartet wird
             # self.inter = SetInterval(0.6, update_embedding_handler, id)
-            self.inter.socket_id = id
-            self.inter.start()
-            t = threading.Timer(5, self.inter.cancel)
-            t.start()
+            # self.inter.socket_id = id
+            # self.inter.start()
+            # t = threading.Timer(5, self.inter.cancel)
+            # t.start()
 
             # make json
             # data = json.dumps({}).encode()

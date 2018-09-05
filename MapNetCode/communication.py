@@ -16,7 +16,7 @@ def make_nodes(position, name=None, label=None):
         label = label.tolist()
     elif isinstance(label[0], np.ndarray):  # label is list of array labels --> convert to list
         label = map(np.ndarray.tolist, label)
-    nodes = pd.DataFrame({'x': position[0], 'y': position[1], 'labels': list(label)})
+    nodes = pd.DataFrame({'x': position[:, 0], 'y': position[:, 1], 'labels': list(label)})
     if name is not None:
         nodes['name'] = name
     return nodes.to_dict(orient='index')

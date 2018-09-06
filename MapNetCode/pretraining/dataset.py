@@ -86,6 +86,9 @@ def compute_mean_std(path_to_info_file, impath='/export/home/kschwarz/Documents/
     mean = torch.stack(mean).mean(dim=0)
     std = torch.stack(std).mean(dim=0)
 
+    if not os.path.isdir('wikiart_datasets'):
+        os.makedirs('wikiart_datasets')
+
     fname = os.path.join('wikiart_datasets', path_to_info_file.split('/')[-1].split('.')[0])
     with open(fname + '_mean_std.pkl', 'w') as f:
         pickle.dump({'mean': list(mean.numpy()), 'std': list(std.numpy())}, f)

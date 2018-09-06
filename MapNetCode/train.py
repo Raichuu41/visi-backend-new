@@ -7,7 +7,6 @@ import torch
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from faiss_master import faiss
-from time import time
 
 from communication import send_payload, make_nodes
 
@@ -204,6 +203,8 @@ def get_modified(old_embedding, new_embedding):
 # TODO: using cluster center is not ideal
 def get_neighborhood(position, idx_modified):
     """Use faiss to compute neighborhood of modified samples."""
+    if len(idx_modified) == 0:
+        return []
     print('Infer neighborhood...')
     start = time.time()
 
@@ -222,8 +223,23 @@ def get_neighborhood(position, idx_modified):
     return neighbors
 
 
+def dummy_func(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neighbors,
+               lr=1e-4, experiment_id=None, socket_id=None, node_id=None):
+    for i in range(10):
+        new_embedding = embedding.copy()
+        idx_move = np.unique(np.concatenate([idx_old_neighbors, idx_new_neighbors]))
+        new_embedding[idx_move] += np.random.rand(len(idx_move), embedding.shape[1]) * 5
+
+        # send to server
+        if socket_id is not None:
+            nodes = make_nodes(position=new_embedding, name=node_id)
+            send_payload(nodes, socket_id)
+
+        time.sleep(2)
+
+
 def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neighbors,
-          lr=1e-4, experiment_id=None, socket_id=None):
+          lr=1e-4, experiment_id=None, socket_id=None, node_id=None):
     # log and saving options
     timestamp = time.strftime('%m-%d-%H-%M')
     exp_name = 'MapNet_' + timestamp
@@ -231,13 +247,13 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
     if experiment_id is not None:
         exp_name = experiment_id + '_' + exp_name
 
-    log = TBPlotter(os.path.join('runs/mapping', 'tensorboard', exp_name))
+    log = TBPlotter(os.path.join('MapNetCode/runs/mapping', 'tensorboard', exp_name))
     log.print_logdir()
 
     save_interval = 10
-    outpath_model = os.path.join('runs/mapping', exp_name, 'models')
+    outpath_model = os.path.join('MapNetCode/runs/mapping', exp_name, 'models')
     os.makedirs(outpath_model)
-    outfile_embedding = h5py.File(os.path.join('runs/mapping', 'embeddings.hdf5'), 'w')
+    outfile_embedding = h5py.File(os.path.join('MapNetCode/runs/mapping', 'embeddings.hdf5'), 'w')
 
     # general
     N = len(feature)
@@ -266,7 +282,7 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
 
     neighbor_loader = DataLoader(IndexDataset(feature), batch_size=100,
                                  sampler=torch.utils.data.SubsetRandomSampler(
-                                     np.concatenate([idx_old_neighbors, idx_new_neighbors])),
+                                     np.unique(np.concatenate([idx_old_neighbors, idx_new_neighbors]))),
                                  **kwargs)
 
     # TODO: test performance with random samples instead of whole dataset
@@ -301,13 +317,14 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
 
             input = torch.autograd.Variable(data.cuda()) if use_cuda else torch.autograd.Variable(data)
             fts_mod = net.mapping(input)
-            emb_mod = net.embedder(torch.nn.funcional.relu(fts_mod))
+            emb_mod = net.embedder(torch.nn.functional.relu(fts_mod))
 
             kl_loss = kl_criterion(fts_mod, emb_mod, indices)
             kl_losses.update(kl_loss.data, len(data))
 
-            l2_loss = l2_criterion(emb_mod, embedding[torch.cat(fixpoint_indices, sample_indices)].type_as(emb_mod))
-            l2_losses.update(l2_loss.data, len(data))
+            idx_l2_fixed = torch.cat([fixpoint_indices, sample_indices])
+            l2_loss = l2_criterion(emb_mod[:len(idx_l2_fixed)], embedding[idx_l2_fixed].type_as(emb_mod))
+            l2_losses.update(l2_loss.data, len(idx_l2_fixed))
 
             loss = 0.6 * l2_loss + 0.4 * kl_loss.type_as(l2_loss)
             losses.update(loss.data, len(data))
@@ -354,7 +371,7 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
 
         # send to server
         if socket_id is not None:
-            nodes = make_nodes(position=new_embedding)
+            nodes = make_nodes(position=new_embedding, name=node_id)
             send_payload(nodes, socket_id)
 
         epoch += 1

@@ -40,7 +40,7 @@ def initialize():   #(info_file, feature_file, weight_file=None):
 
     # initialize the network
     net = MapNet(feature_dim=feature.shape[1], output_dim=2)
-    initialize_embedder(net, weight_file)
+    initialize_embedder(net.embedder, weight_file)
     embedding = compute_embedding(net.embedder, feature)
 
     data = {

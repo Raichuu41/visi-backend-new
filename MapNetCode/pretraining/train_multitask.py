@@ -284,7 +284,7 @@ def main():
     print('Best model mean accuracy: {}'.format(best_acc))
 
     shutil.copyfile(os.path.join(log_dir, expname + '_model_best.pth.tar'),
-                    os.path.join('models', expname + '_model_best_mean_acc.pth.tar'))
+                    os.path.join('models', expname + '_model_best.pth.tar'))
 
 if __name__ == '__main__':
     main()

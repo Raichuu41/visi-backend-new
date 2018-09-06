@@ -12,7 +12,7 @@ def make_nodes(position, name=None, label=None):
             of lists or np.ndarray of shape N x L, where L is the number of labels)"""
     # format label
     if label is None:
-        label = [None] * position.shape[1]
+        label = [None] * len(position)
     label = np.array(label)
     assert label.ndim <= 2, 'a node can only have one dimensional labels'
     if label.ndim == 1:

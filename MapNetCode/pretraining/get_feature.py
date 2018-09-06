@@ -10,7 +10,7 @@ import h5py
 from dataset import Wikiart
 from model import mobilenet_v2, vgg16_bn, narrownet, remove_fc
 
-sys.path.append('../FullPipeline')
+sys.path.append('/export/home/kschwarz/Documents/Masters/FullPipeline')
 import matplotlib as mpl
 mpl.use('TkAgg')
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, load_weights
@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='Extract features from wikiart data
 parser.add_argument('--exp_name', type=str, help='Name appended to generated output file name.')
 parser.add_argument('--model', type=str, help='Choose from "mobilenet_v2", or "vgg16_bn".')
 parser.add_argument('--weight_file', type=str, help='File to load pretrained weights from.')
-parser.add_argument('--output_dir', default='output', type=str, help='Directory to which features are saved.')
+parser.add_argument('--output_dir', default='../features', type=str, help='Directory to which features are saved.')
 
 parser.add_argument('--info_file', type=str, help='Path to hdf5 file containing dataframe of dataset.')
 parser.add_argument('--stat_file', default='wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl', type=str,
@@ -77,12 +77,12 @@ def main():
         net = net.cuda()
     print('Extract features using {}.'.format(str(net)))
 
+    remove_fc(net, inplace=True)
+
     if args.weight_file:
-        print("=> loading weights from '{}'".format(args.weight_file))
         pretrained_dict = load_weights(args.weight_file, net.state_dict(), prefix_file='bodynet.')
         net.load_state_dict(pretrained_dict)
 
-    remove_fc(net, inplace=True)
     if use_cuda:
         net = net.cuda()
 

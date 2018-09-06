@@ -17,10 +17,13 @@ from random import uniform
 sys.path.append('MapNetCode')
 from initialization import initialize
 from communication import make_nodes, read_nodes
-from train import train, get_modified, get_neighborhood
+from train import train, get_modified, get_neighborhood, dummy_func
 
-# initialize global dataset information (image ids, features, embedding)
+import pickle
+
+# initialize global dataset information (image ids, features, embedding) and network
 dataset_info = None
+net = None
 
 StartTime = time.time()
 
@@ -111,7 +114,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
-        global dataset_info
+        global dataset_info, net
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -233,19 +236,40 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(self.socket_id)
 
             data = read_nodes(body['nodes'])
-            print(data)
+            ### DEBUG
+            # with open('debug_body.pkl', 'w') as f:
+            #     pickle.dump({'body': data, 'dataset_info': dataset_info, 'net': net}, f)
+            # print('saved body.')
+            # return 0
+            # with open('debug_body.pkl', 'r') as f:
+            #     debug_data = pickle.load(f)
+            # data = debug_data['body']
+            # dataset_info = debug_data['dataset_info']
+            # net = debug_data['net']
 
             # Katjas code goes here
             new_position = np.stack([data['x'], data['y']], axis=1)
             old_position = dataset_info['position']
 
-            idx_modified = get_modified(old_position, new_position)
-            idx_old_neighbors = get_neighborhood(old_position, idx_modified)
-            idx_new_neighbors = get_neighborhood(new_position, idx_modified)
+            # idx_modified = get_modified(old_position, new_position)
+            # idx_old_neighbors = get_neighborhood(old_position, idx_modified)
+            # idx_new_neighbors = get_neighborhood(new_position, idx_modified)
 
-            train(net, dataset_info['feature'], dataset_info['position'],
+            idx_modified = get_modified(old_position, new_position)
+            idx_old_neighbors = np.arange(50, 60)
+            idx_new_neighbors = np.arange(50, 300)
+
+            print('Modified nodes: {}'.format([dataset_info['name'][idx_modified]]))
+
+            dummy_func(net, dataset_info['feature'], dataset_info['position'],
                   idx_modified, idx_old_neighbors, idx_new_neighbors,
-                  lr=1e-4, experiment_id=None, socket_id=self.socket_id)        # TODO: correct socket ID?
+                  lr=1e-4, experiment_id=None, socket_id=self.socket_id,
+                  node_id=dataset_info['name'])  # TODO: correct socket ID?
+
+
+            # train(net, dataset_info['feature'], dataset_info['position'],
+            #       idx_modified, idx_old_neighbors, idx_new_neighbors,
+            #       lr=1e-4, experiment_id=None, socket_id=self.socket_id, node_id=dataset_info['name'])        # TODO: correct socket ID?
 
             # TODO was ist wenn das mehrfach gestartet wird
             # self.inter = SetInterval(0.6, update_embedding_handler, id)

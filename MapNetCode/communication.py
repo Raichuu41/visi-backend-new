@@ -4,7 +4,7 @@ import json
 import requests
 
 
-def make_nodes(position, name=None, label=None):
+def make_nodes(position, name=None, label=None, index=False):
     """Args:
         names (list or np.ndarray): names of nodes, e.g. image ID
         position (2 x N np.ndarray): x,y coordinates of datapoints
@@ -23,6 +23,8 @@ def make_nodes(position, name=None, label=None):
     nodes = pd.DataFrame({'x': position[:, 0], 'y': position[:, 1], 'labels': list(label)})
     if name is not None:
         nodes['name'] = name
+    if index is True:
+        nodes['index'] = np.arange(0, len(position))
     return nodes.to_dict(orient='index')
 
 

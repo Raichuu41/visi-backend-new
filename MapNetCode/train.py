@@ -153,11 +153,11 @@ def train_embedder(embedder, feature, lr=1e-2, batch_size=100, experiment_id=Non
         return losses.avg
 
     # train network until scheduler reduces learning rate to threshold value
-    lr_threshold = 1e-6
+    lr_threshold = 1e-5
     epoch = 1
 
     best_loss = float('inf')
-    while optimizer.param_groups[-1]['lr'] > lr_threshold:
+    while optimizer.param_groups[-1]['lr'] >= lr_threshold:
         train(epoch)
         testloss = test(epoch)
         scheduler.step(testloss)
@@ -196,8 +196,11 @@ def compute_embedding(embedder, feature):
     return embedding
 
 
-def get_modified(old_embedding, new_embedding):
-    return np.where(np.any(old_embedding != new_embedding, axis=1))[0]
+def get_modified(old_embedding, new_embedding, tol=None):
+    if tol is None:
+        return np.where(np.any(old_embedding != new_embedding, axis=1))[0]
+    else:
+        return np.where(np.any(np.abs(old_embedding - new_embedding) > tol, axis=1))[0]
 
 
 # TODO: using cluster center is not ideal
@@ -223,23 +226,8 @@ def get_neighborhood(position, idx_modified):
     return neighbors
 
 
-def dummy_func(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neighbors,
-               lr=1e-4, experiment_id=None, socket_id=None, node_id=None):
-    for i in range(10):
-        new_embedding = embedding.copy()
-        idx_move = np.unique(np.concatenate([idx_old_neighbors, idx_new_neighbors]))
-        new_embedding[idx_move] += np.random.rand(len(idx_move), embedding.shape[1]) * 5
-
-        # send to server
-        if socket_id is not None:
-            nodes = make_nodes(position=new_embedding, name=node_id)
-            send_payload(nodes, socket_id)
-
-        time.sleep(2)
-
-
 def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neighbors,
-          lr=1e-4, experiment_id=None, socket_id=None, node_id=None):
+          lr=1e-4, experiment_id=None, socket_id=None, scale_func=None):
     # log and saving options
     timestamp = time.strftime('%m-%d-%H-%M')
     exp_name = 'MapNet_' + timestamp
@@ -294,12 +282,12 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
                                  **kwargs)
 
     # train network until scheduler reduces learning rate to threshold value
-    lr_threshold = 1e-6
+    lr_threshold = 1e-5
     log_interval = 10
     epoch = 1
     new_features = feature.copy()
     new_embedding = embedding.numpy().copy()
-    while optimizer.param_groups[-1]['lr'] > lr_threshold:
+    while optimizer.param_groups[-1]['lr'] >= lr_threshold:
         # compute beta for kl loss
         kl_criterion._compute_beta(new_features)
 
@@ -326,7 +314,7 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
             l2_loss = l2_criterion(emb_mod[:len(idx_l2_fixed)], embedding[idx_l2_fixed].type_as(emb_mod))
             l2_losses.update(l2_loss.data, len(idx_l2_fixed))
 
-            loss = 0.6 * l2_loss + 0.4 * kl_loss.type_as(l2_loss)
+            loss = 1.0 * l2_loss + 0.0 * kl_loss.type_as(l2_loss)
             losses.update(loss.data, len(data))
 
             optimizer.zero_grad()
@@ -343,6 +331,10 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
             #         epoch, (batch_idx + 1) * len(fixpoint_indices), len(fixpoint_loader.sampler),
             #         float(losses.val), float(losses.avg),
             #         optimizer.param_groups[-1]['lr']))
+
+            if batch_idx >= 2 * len(neighbor_loader):
+                print('\tend epoch after {} random fix point samples'.format((batch_idx+1) * fixpoint_loader.batch_size))
+                break
 
         scheduler.step(losses.avg)
         log.write('l2_loss', float(l2_losses.avg), epoch, test=False)
@@ -371,10 +363,12 @@ def train(net, feature, embedding, idx_modified, idx_old_neighbors, idx_new_neig
 
         # send to server
         if socket_id is not None:
-            nodes = make_nodes(position=new_embedding, name=node_id)
+            position = new_embedding if scale_func is None else scale_func(new_embedding)
+            nodes = make_nodes(position=position, index=True)
             send_payload(nodes, socket_id)
 
         epoch += 1
     outfile_embedding.close()
+    print('Finished training.')
 
 

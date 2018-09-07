@@ -17,7 +17,7 @@ from random import uniform
 sys.path.append('MapNetCode')
 from initialization import initialize
 from communication import make_nodes, read_nodes
-from train import train, get_modified, get_neighborhood, dummy_func
+from train import train, get_modified, get_neighborhood
 
 import pickle
 
@@ -134,9 +134,16 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # Katjas code goes here
             net, dataset_info = initialize()
-            nodes = make_nodes(position=dataset_info['position'],
+            # introduce scale factor
+            limits = (-15, 15)
+            pmax, pmin = dataset_info['position'].max(), dataset_info['position'].min()
+            dataset_info['scale_func'] = lambda x: np.divide((limits[1]-limits[0]) * (x.copy() - pmin), pmax-pmin) + limits[0]
+            dataset_info['inverse_scale_func'] = lambda x: np.divide((x.copy()-limits[0]) * (pmax-pmin), limits[1]-limits[0]) + pmin
+
+            nodes = make_nodes(position=dataset_info['scale_func'](dataset_info['position']),
                                name=dataset_info['name'],
-                               label=dataset_info['label'])
+                               label=dataset_info['label'],
+                               index=True)
             categories = dataset_info['categories']
             data = {'nodes': nodes, 'categories': categories}
 
@@ -236,40 +243,21 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(self.socket_id)
 
             data = read_nodes(body['nodes'])
-            ### DEBUG
-            # with open('debug_body.pkl', 'w') as f:
-            #     pickle.dump({'body': data, 'dataset_info': dataset_info, 'net': net}, f)
-            # print('saved body.')
-            # return 0
-            # with open('debug_body.pkl', 'r') as f:
-            #     debug_data = pickle.load(f)
-            # data = debug_data['body']
-            # dataset_info = debug_data['dataset_info']
-            # net = debug_data['net']
 
             # Katjas code goes here
             new_position = np.stack([data['x'], data['y']], axis=1)
+            new_position = new_position[np.argsort(data['index'])]
+            new_position = dataset_info['inverse_scale_func'](new_position)
             old_position = dataset_info['position']
 
-            # idx_modified = get_modified(old_position, new_position)
-            # idx_old_neighbors = get_neighborhood(old_position, idx_modified)
-            # idx_new_neighbors = get_neighborhood(new_position, idx_modified)
+            idx_modified = get_modified(old_position, new_position, tol=1e-4)
+            idx_old_neighbors = get_neighborhood(old_position, idx_modified)
+            idx_new_neighbors = get_neighborhood(new_position, idx_modified)
 
-            idx_modified = get_modified(old_position, new_position)
-            idx_old_neighbors = np.arange(50, 60)
-            idx_new_neighbors = np.arange(50, 300)
-
-            print('Modified nodes: {}'.format([dataset_info['name'][idx_modified]]))
-
-            dummy_func(net, dataset_info['feature'], dataset_info['position'],
+            train(net, dataset_info['feature'], dataset_info['position'],
                   idx_modified, idx_old_neighbors, idx_new_neighbors,
                   lr=1e-4, experiment_id=None, socket_id=self.socket_id,
-                  node_id=dataset_info['name'])  # TODO: correct socket ID?
-
-
-            # train(net, dataset_info['feature'], dataset_info['position'],
-            #       idx_modified, idx_old_neighbors, idx_new_neighbors,
-            #       lr=1e-4, experiment_id=None, socket_id=self.socket_id, node_id=dataset_info['name'])        # TODO: correct socket ID?
+                  scale_func=dataset_info['scale_func'])        # TODO: correct socket ID?
 
             # TODO was ist wenn das mehrfach gestartet wird
             # self.inter = SetInterval(0.6, update_embedding_handler, id)

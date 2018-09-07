@@ -412,7 +412,8 @@ io.sockets.on('connection', (socket) => {
             if (!node.clique) node.clique = [1, 2, 3];
             if (!node.rank) node.rank = 0.5;
 
-    //                const iconPath = `${imgPath}${node.name}.JPEG`;            const iconPath = `${imgPath}${node.name}.jpg`;
+    //                const iconPath = `${imgPath}${node.name}.JPEG`;
+                      const iconPath = `${imgPath}${node.name}.jpg`;
 
             node.pics = {};
             node.cached = false; // this is interesting while performance messearuing
@@ -430,7 +431,7 @@ io.sockets.on('connection', (socket) => {
                         // const buffer = await sharp(file)
                         //     .resize(50, 50)
                         //     .resize(200, 200)
-                            .max()
+                        //     .max()
                         //     .toFormat('jpg')
                         //     .toBuffer();
                         // node.buffer = `data:image/jpg;base64,${buffer.toString('base64')}`;

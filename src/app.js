@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import { promisify } from 'util';
 import sharp from 'sharp';
-import morgan from 'morgan'
+import morgan from 'morgan';
 // import graphMock from './mock/graphSmall'
 // import exampleGraph from './mock/example_graph'
 // import exampleNodes from './mock/exampleNodes';
@@ -68,11 +68,7 @@ if (process.env.NODE_ENV === 'development') {
     imgPath = `${__dirname}/../images/2582_sub_wikiarts/`;
     // imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
 } else {
-//    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
-    imgPath = '/export/home/kschwarz/Documents/Data/Wikiart_artist49_images/';
-//    imgPath = `${__dirname}/images/`;
-//    imgPath = `/export/home/kschwarz/Documents/Masters/Sabine_Project/images-de-piles/`;
-//    imgPath = `/export/home/kschwarz/Documents/Data/tiny-imagenet-200/val/images/`;
+    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
 }
 
 if (process.env.NODE_ENV === 'development') {
@@ -137,7 +133,7 @@ app.use(bodyParser.urlencoded({ extended: false })) */
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: false, limit: '5mb' }));
-app.use(morgan('dev'))
+app.use(morgan('dev'));
 
 
 // console.log(process.env.NODE_ENV === 'development')
@@ -155,18 +151,7 @@ app.use('/api', express.static('images'));
     res.send()
 }) */
 
-//<<<<<<< HEAD
-//// set different image path for prod/dev mode
-//let imgPath = '';
-//
-//if (process.env.NODE_ENV === 'development') {
-//    // imgPath = `${__dirname}/images/images_3000/`;
-//    imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`
-//} else {
-//    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
-//}
-//=======
-/// catch 404 and forward to error handler
+// / catch 404 and forward to error handler
 app.use((req, res, next) => {
     const err = new Error('URL Not Found');
     err.status = 404;
@@ -175,12 +160,13 @@ app.use((req, res, next) => {
 
 app.use((err, req, res) => {
     res.status(err.status || 500);
-    res.json({'errors': {
+    res.json({
+        errors: {
             message: err.message,
-            error: {}
-        }});
+            error: {},
+        },
+    });
 });
-//>>>>>>> remotes/upstream/master
 
 if (!fs.existsSync(imgPath)) throw Error(`IMAGE PATH NOT EXISTS - ${imgPath}`);
 
@@ -268,7 +254,7 @@ io.sockets.on('connection', (socket) => {
 
             try {
                 const time2 = process.hrtime();
-                const res = await fetch('http://localhost:8000/nodes', {
+                const res = await fetch(`http://${pythonRoute}:8000/nodes`, {
                     method: 'POST',
                     header: { 'Content-type': 'application/json' },
                     body: JSON.stringify({
@@ -278,7 +264,6 @@ io.sockets.on('connection', (socket) => {
                 });
                 // there are only nodes comming back from here
                 const data = await res.json();
-                console.log(data.categorys)
                 nodes = data.nodes;
                 categorys = data.categories;
                 const diff2 = process.hrtime(time2);
@@ -293,7 +278,6 @@ io.sockets.on('connection', (socket) => {
         categorys.forEach((kat, i) => labels[i] = { name: kat, labels: [], show: true });
 
         const nodeDataLength = Object.keys(nodes).length;
-        console.log(nodeDataLength)
         socket.emit('totalNodesCount', nodeDataLength);
 
 
@@ -433,54 +417,53 @@ io.sockets.on('connection', (socket) => {
             if (!node.clique) node.clique = [1, 2, 3];
             if (!node.rank) node.rank = 0.5;
 
-    //                const iconPath = `${imgPath}${node.name}.JPEG`;
-                      const iconPath = `${imgPath}${node.name}.jpg`;
+            const iconPath = `${imgPath}${node.name}.jpg`;
 
             node.pics = {};
             node.cached = false; // this is interesting while performance messearuing
             node.url = `/images_3000/${node.name}.jpg`;
 
-                try {
-                    if (scaledPicsHash[node.name]) {
-                        // node.buffer = iconsFileHash[node.name].buffer;
-                        node.pics = scaledPicsHash[node.name];
-                        // node.buffer = stringImgHash[node.name];
-                        nodes.cached = true;
-                    } else {
-                         const file = await readFile(iconPath);
-                        // console.log(file);
-                        // const buffer = await sharp(file)
-                        //     .resize(50, 50)
-                        //     .resize(200, 200)
-                        //     .max()
-                        //     .toFormat('jpg')
-                        //     .toBuffer();
-                        // node.buffer = `data:image/jpg;base64,${buffer.toString('base64')}`;
-                        // stringImgHash[node.name] = node.buffer; // save for faster reload TODO test with lots + large image
+            try {
+                if (scaledPicsHash[node.name]) {
+                    // node.buffer = iconsFileHash[node.name].buffer;
+                    node.pics = scaledPicsHash[node.name];
+                    // node.buffer = stringImgHash[node.name];
+                    nodes.cached = true;
+                } else {
+                    // const file = await readFile(iconPath);
+                    // console.log(file);
+                    // const buffer = await sharp(file)
+                    //     .resize(50, 50)
+                    //     .max()
+                    //     .toFormat('jpg')
+                    //     .toBuffer();
+                    // node.buffer = `data:image/jpg;base64,${buffer.toString('base64')}`;
+                    // stringImgHash[node.name] = node.buffer; // save for faster reload TODO test with lots + large image
 
-                        // new architecture 2
+                    // new architecture 2
 
-                        await Promise.all(imgSizes.map(async (size) => {
-                            node.pics[size] = await sharp(iconPath)
-                                .resize(size, size)
-                                .max()
-                                .overlayWith(
-                                    Buffer.alloc(4),
-                                    { tile: true, raw: { width: 1, height: 1, channels: 4 } },
-                                )
-                                .raw()
-                                .toBuffer({ resolveWithObject: true });
-                        }));
-                        scaledPicsHash[node.name] = node.pics;
+                    await Promise.all(imgSizes.map(async (size) => {
+                        node.pics[size] = await sharp(iconPath)
+                            .resize(size, size)
+                            .max()
+                            .overlayWith(
+                                Buffer.alloc(4),
+                                { tile: true, raw: { width: 1, height: 1, channels: 4 } },
+                            )
+                            .raw()
+                            .toBuffer({ resolveWithObject: true });
+                    }));
+                    scaledPicsHash[node.name] = node.pics;
 
                     // new archetecture 1
                     /* await Promise.all(arr.map(async (size) => {
                             const buffer = await sharp(file)
                                 .resize(size, size)
                                 .max()
-                                .toFormat( 'jpg')
-                        .toBuffer();node.pics[size] = `data:image/jpg;base64,${buffer.toString('base64')}`; // save for faster reload TODO test with lots + large image
-                        }));*/
+                                .toFormat('jpg')
+                                .toBuffer();
+                            node.pics[size] = `data:image/jpg;base64,${buffer.toString('base64')}`; // save for faster reload TODO test with lots + large image
+                        })); */
                 }
 
                 socket.compress(false).emit('node', node);

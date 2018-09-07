@@ -155,7 +155,7 @@ app.use('/api', express.static('images'));
     res.send()
 }) */
 
-<<<<<<< HEAD
+//<<<<<<< HEAD
 //// set different image path for prod/dev mode
 //let imgPath = '';
 //
@@ -165,7 +165,7 @@ app.use('/api', express.static('images'));
 //} else {
 //    imgPath = '/export/home/asanakoy/workspace/wikiart/images/';
 //}
-=======
+//=======
 /// catch 404 and forward to error handler
 app.use((req, res, next) => {
     const err = new Error('URL Not Found');
@@ -180,7 +180,7 @@ app.use((err, req, res) => {
             error: {}
         }});
 });
->>>>>>> remotes/upstream/master
+//>>>>>>> remotes/upstream/master
 
 if (!fs.existsSync(imgPath)) throw Error(`IMAGE PATH NOT EXISTS - ${imgPath}`);
 

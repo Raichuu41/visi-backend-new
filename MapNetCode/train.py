@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from faiss_master import faiss
 from Queue import Queue
+from sklearn.svm import SVC
 
 sys.path.append('../TSNENet')
 from loss import TSNELoss
@@ -266,13 +267,54 @@ def mutual_k_nearest_neighbors(vectors, sample_idcs, k=1):
         scores[idx[:, col]] += col
     neighbors = np.argsort(scores)[len(sample_idcs)+1:len(sample_idcs)+1+k]
 
-    # idx = idx.transpose().flatten()         # list nearest mutual neighbors and make them unique
-    # neighbors = []
-    # for i in idx:
-    #     if i not in neighbors:
-    #         neighbors.append(i)
-    #     if len(neighbors) == k:
-    #         break
+    stop = time.time()
+    print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
+    return neighbors
+
+
+def listed_k_nearest_neighbors(vectors, sample_idcs, k=1):
+    print('Find high dimensional neighbors...')
+    start = time.time()
+    index = faiss.IndexFlatL2(vectors.shape[1])  # build the index
+    index.add(vectors.astype(np.float32))  # add vectors to the index
+    _, idx = index.search(vectors[sample_idcs].astype(np.float32), len(vectors))
+
+    mask = np.isin(idx, sample_idcs).__invert__()
+    idx = idx[mask].reshape(len(idx), -1)
+
+    idx = idx.transpose().flatten()         # list nearest mutual neighbors and make them unique
+    neighbors = []
+    for i in idx:
+        if i not in neighbors:
+            neighbors.append(i)
+        if len(neighbors) == k:
+            break
+
+    stop = time.time()
+    print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
+    return neighbors
+
+
+def svm_k_nearest_neighbors(vectors, sample_idcs, k=1):
+    # train an SVM to separate feature space into classes
+    print('Find high dimensional neighbors...')
+    start = time.time()
+
+    N_unlabeled = 500
+    clf = SVC(kernel='linear', C=0.5, gamma='auto', class_weight='balanced', probability=True)
+
+    idx_unlabeled = np.setdiff1d(range(len(vectors)), sample_idcs)
+    idx_unlabeled = np.random.choice(idx_unlabeled, N_unlabeled, replace=False)
+
+    train_data = np.concatenate([vectors[sample_idcs], vectors[idx_unlabeled]])
+
+    labels = np.zeros(len(train_data))
+    labels[:len(sample_idcs)] = 1
+    clf.fit(X=train_data, y=labels)
+    prob = clf.predict_proba(vectors)[:, 1]
+    prob[sample_idcs] = -1
+
+    neighbors = np.argsort(prob)[-1::-1]
 
     stop = time.time()
     print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))

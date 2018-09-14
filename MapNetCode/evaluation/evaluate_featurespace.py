@@ -113,8 +113,9 @@ def k_nn_accuracy(feature, gt_label, k=(1,2,4,8), average=None):
 def evaluate(feature_file, info_file, data_dict, category=None, experiment_id=None):
     data_dict = load_data(feature_file, info_file)
     if category is None:        # evaluate for all categories
-        category = data_dict['labels']
-    y_pred, y_true = predict_cluster(data_dict, category='shape')
-    prec, rec, f1, _ = metrics.precision_recall_fscore_support(y_true, y_pred, average=None)
-    nmi = metrics.normalized_mutual_info_score(y_true, y_pred)
-    neighbor_acc = k_nn_accuracy(data_dict['features'], data_dict['labels']['shape'], average=None)
+        category = data_dict['labels'].keys()
+    for c in category:
+        y_pred, y_true = predict_cluster(data_dict, category=c)
+        prec, rec, f1, _ = metrics.precision_recall_fscore_support(y_true, y_pred, average=None)
+        nmi = metrics.normalized_mutual_info_score(y_true, y_pred)
+        neighbor_acc = k_nn_accuracy(data_dict['features'], data_dict['labels'][c], average=None)

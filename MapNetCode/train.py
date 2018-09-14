@@ -532,20 +532,20 @@ def train(net, feature, image_id, label, old_embedding, target_embedding,
 
             t_load_start = time.time()
 
-        print('Times:'
-              '\n\tLoader: {})'
-              '\n\tForward: {})'
-              '\n\tLoss: {})'
-              '\n\tBackprop: {})'
-              '\n\tUpdate: {})'
-              '\n\tTotal: {})'.format(
-            np.mean(t_load),
-            np.mean(t_forward),
-            np.mean(t_loss),
-            np.mean(t_backprop),
-            np.mean(t_update),
-            np.mean(t_tot),
-        ))
+        # print('Times:'
+        #       '\n\tLoader: {})'
+        #       '\n\tForward: {})'
+        #       '\n\tLoss: {})'
+        #       '\n\tBackprop: {})'
+        #       '\n\tUpdate: {})'
+        #       '\n\tTotal: {})'.format(
+        #     np.mean(t_load),
+        #     np.mean(t_forward),
+        #     np.mean(t_loss),
+        #     np.mean(t_backprop),
+        #     np.mean(t_update),
+        #     np.mean(t_tot),
+        # ))
 
         t_train_end = time.time()
         t_train.append(t_train_end - t_train_start)
@@ -574,10 +574,12 @@ def train(net, feature, image_id, label, old_embedding, target_embedding,
 
         print('Train Epoch: {}\t'
               'Loss: {:.4f}\t'
+              'L2 Loss: {:.4f}\t'
               'KL Loss: {:.4f}\t'
               'LR: {:.6f}'.format(
             epoch,
             float(losses.avg),
+            float(l2_losses.avg),
             float(kl_losses.avg),
             optimizer.param_groups[-1]['lr']))
 

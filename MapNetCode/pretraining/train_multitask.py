@@ -20,6 +20,9 @@ import matplotlib as mpl
 mpl.use('TkAgg')
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config
 
+sys.path.append('/export/home/kschwarz/Documents/Data/Geometric_Shapes')
+from shape_dataset import ShapeDataset
+
 
 parser = argparse.ArgumentParser(description='Multitask training on multiple labels of Wikiarts dataset.')
 # wikiart dataset
@@ -31,8 +34,11 @@ parser.add_argument('--im_path', default='/export/home/kschwarz/Documents/Data/W
                     help='Path to Wikiart images')
 parser.add_argument('--stat_file', default='wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl',
                     type=str, help='.pkl file containing artist dataset mean and std.')
+parser.add_argument('--shape_dataset', default=False, action='store_true', help='Use artificial shape dataset')
+
 # model
 parser.add_argument('--model', type=str, help='Choose from: mobilenet_v2, vgg16_bn')
+parser.add_argument('--not_narrow', default=False, action='store_true', help='Do not narrow feature down to 128 dim.')
 parser.add_argument('--chkpt', default=None, type=str, help='Checkpoint file to resume from.')
 
 # training parameters
@@ -80,13 +86,24 @@ def main():
                 normalize,
     ])
 
-    classes = ['artist_name', 'genre', 'style', 'technique', 'century']
-    valset = Wikiart(path_to_info_file=args.val_file, path_to_images=args.im_path,
-                     classes=classes, transform=val_transform)
-    trainset = Wikiart(path_to_info_file=args.train_file, path_to_images=args.im_path,
-                       classes=classes, transform=train_transform)
+    if not args.shape_dataset:
+        classes = ['artist_name', 'genre', 'style', 'technique', 'century']
+        valset = Wikiart(path_to_info_file=args.val_file, path_to_images=args.im_path,
+                         classes=classes, transform=val_transform)
+        trainset = Wikiart(path_to_info_file=args.train_file, path_to_images=args.im_path,
+                           classes=classes, transform=train_transform)
+    else:
+        classes = ['shape', 'n_shapes', 'color_shape', 'color_background']
+        valset = ShapeDataset(root_dir='/export/home/kschwarz/Documents/Data/Geometric_Shapes', split='val',
+                              classes=classes, transform=val_transform)
+        trainset = ShapeDataset(root_dir='/export/home/kschwarz/Documents/Data/Geometric_Shapes', split='train',
+                                classes=classes, transform=train_transform)
 
-    assert trainset.labels_to_ints == valset.labels_to_ints, 'validation set and training set int labels do not match'
+    if not trainset.labels_to_ints == valset.labels_to_ints:
+        print('validation set and training set int labels do not match. Use int conversion of trainset')
+        print(trainset.labels_to_ints, valset.labels_to_ints)
+        valset.labels_to_ints = trainset.labels_to_ints.copy()
+
     num_labels = [len(trainset.labels_to_ints[c]) for c in classes]
 
     # PARAMETERS
@@ -104,12 +121,15 @@ def main():
         featurenet = mobilenet_v2(pretrained=True)
     elif args.model.lower() == 'vgg16_bn':
         featurenet = vgg16_bn(pretrained=True)
-    bodynet = narrownet(featurenet)
+    if args.not_narrow:
+        bodynet = featurenet
+    else:
+        bodynet = narrownet(featurenet)
     net = OctopusNet(bodynet, n_labels=num_labels)
     n_parameters = sum([p.data.nelement() for p in net.parameters() if p.requires_grad])
     if use_cuda:
         net = net.cuda()
-    print('Using {}\n\t+ Number of params: {}'.format(str(bodynet), n_parameters))
+    print('Using {}\n\t+ Number of params: {}'.format(str(bodynet).split('(')[0], n_parameters))
 
     # LOG/SAVE OPTIONS
     log_interval = args.log_interval
@@ -117,9 +137,12 @@ def main():
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
 
-    # tensorboard summary writer
+    # tensorboard summary writerR
     timestamp = time.strftime('%m-%d-%H-%M')
-    expname = timestamp + '_' + str(bodynet)
+    if args.shape_dataset:
+        expname = timestamp + '_ShapeDataset_' + str(bodynet).split('(')[0]
+    else:
+        expname = timestamp + '_' + str(bodynet).split('(')[0]
     if args.exp_name is not None:
         expname = expname + '_' + args.exp_name
     log = TBPlotter(os.path.join(log_dir, 'tensorboard', expname))

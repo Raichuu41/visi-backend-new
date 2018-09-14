@@ -17,13 +17,15 @@ from random import uniform
 sys.path.append('MapNetCode')
 from initialization import initialize
 from communication import make_nodes, read_nodes
-from train import train, get_modified, get_neighborhood
+from train import train, get_modified, get_neighborhood, mutual_k_nearest_neighbors
 
 import pickle
 
 # initialize global dataset information (image ids, features, embedding) and network
 dataset_info = None
 net = None
+experiment_id = time.strftime('%m-%d-%H-%M') + '_separate_colors'
+N = None
 
 StartTime = time.time()
 
@@ -114,7 +116,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
-        global dataset_info, net
+        global dataset_info, net, experiment_id, N
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -133,16 +135,19 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(data)
 
             # Katjas code goes here
-            net, dataset_info = initialize()
+            net, dataset_info = initialize(shape_dataset=True, experiment_id=experiment_id)
+            experiment_id = dataset_info['experiment_id']
             # introduce scale factor
             limits = (-15, 15)
             pmax, pmin = dataset_info['position'].max(), dataset_info['position'].min()
             dataset_info['scale_func'] = lambda x: np.divide((limits[1]-limits[0]) * (x.copy() - pmin), pmax-pmin) + limits[0]
             dataset_info['inverse_scale_func'] = lambda x: np.divide((x.copy()-limits[0]) * (pmax-pmin), limits[1]-limits[0]) + pmin
+            if N is None:
+                N = len(dataset_info['name'])
 
-            nodes = make_nodes(position=dataset_info['scale_func'](dataset_info['position']),
-                               name=dataset_info['name'],
-                               label=dataset_info['label'],
+            nodes = make_nodes(position=dataset_info['scale_func'](dataset_info['position'][:N]),
+                               name=dataset_info['name'][:N],
+                               label=dataset_info['label'][:N],
                                index=True)
             categories = dataset_info['categories']
             data = {'nodes': nodes, 'categories': categories}
@@ -246,18 +251,26 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # Katjas code goes here
             new_position = np.stack([data['x'], data['y']], axis=1)
-            new_position = new_position[np.argsort(data['index'])]
             new_position = dataset_info['inverse_scale_func'](new_position)
             old_position = dataset_info['position']
 
-            idx_modified = get_modified(old_position, new_position, tol=1e-4)
-            idx_old_neighbors = get_neighborhood(old_position, idx_modified)
-            idx_new_neighbors = get_neighborhood(new_position, idx_modified)
+            idx_modified = get_modified(old_position[:N], new_position, tol=1e-4)
+            # idx_old_neighbors = get_neighborhood(old_position[:N], idx_modified)
+            # idx_new_neighbors = get_neighborhood(new_position[:N], idx_modified)
+            idx_old_neighbors = mutual_k_nearest_neighbors(old_position[:N], idx_modified, k=50)
+            idx_new_neighbors = mutual_k_nearest_neighbors(new_position[:N], idx_modified, k=50)
 
-            train(net, dataset_info['feature'], dataset_info['position'],
-                  idx_modified, idx_old_neighbors, idx_new_neighbors,
-                  lr=1e-4, experiment_id=None, socket_id=self.socket_id,
-                  scale_func=dataset_info['scale_func'])        # TODO: correct socket ID?
+            new_position = train(net, dataset_info['feature'][:N], dataset_info['name'].values.astype(str)[:N],
+                                 dataset_info['label'][:N],
+                                 old_position[:N], new_position,
+                                 idx_modified, idx_old_neighbors, idx_new_neighbors,
+                                 lr=1e-3, experiment_id=experiment_id, socket_id=self.socket_id,
+                                 scale_func=dataset_info['scale_func'])
+
+            print('HELLO')
+            dataset_info['position'] = new_position
+
+
 
             # TODO was ist wenn das mehrfach gestartet wird
             # self.inter = SetInterval(0.6, update_embedding_handler, id)

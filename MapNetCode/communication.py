@@ -29,7 +29,9 @@ def make_nodes(position, name=None, label=None, index=False):
 
 
 def read_nodes(json_nodes):
-    return pd.DataFrame.from_dict(json_nodes, orient='index')
+    df = pd.DataFrame.from_dict(json_nodes, orient='index')
+    df.index = df['index']
+    return df.sort_index()
 
 
 def send_payload(nodes, socket_id):
@@ -37,3 +39,7 @@ def send_payload(nodes, socket_id):
     payload = {'nodes': nodes, 'socket_id': socket_id}
     #print(payload)
     requests.post("http://localhost:3000/api/v1/updateEmbedding", data=json.dumps(payload), headers=headers)
+
+
+if __name__ == '__main__':
+    pass

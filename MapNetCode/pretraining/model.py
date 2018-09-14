@@ -2,6 +2,7 @@ import torch
 from MobileNetV2 import MobileNetV2             # 3505960 parameters
 import torchvision.models as models
 import copy
+import torch.nn as nn
 
 weight_file_v2 = 'mobilenetv2_718.pth.tar'
 
@@ -53,7 +54,12 @@ class NarrowNet(torch.nn.Module):
                     self.in_features = m.in_features
                     break
         assert self.in_features is not None, 'could not find Linear layer in classifier of body network'
-        self.featurenet = remove_fc(self.featurenet, inplace=False)
+        # self.featurenet = remove_fc(self.featurenet, inplace=False)
+        # remove fc layer
+        for name, module in self.featurenet.named_children():
+            if name == 'classifier' or name == 'fc':
+                self.featurenet.__setattr__(name, Identity())
+
         self.featurenet.num_classes = -1
 
         # some fully connected layers
@@ -85,9 +91,22 @@ class Identity(torch.nn.Module):
 
 def remove_fc(net, inplace=False):
     model = copy.copy(net) if inplace else copy.deepcopy(net)
-    for name, module in model.named_children():
-        if name == 'classifier' or name == 'fc':
-            model.__setattr__(name, Identity())
+    if str(net).startswith('VGG'):
+        for name, module in model.named_children():
+            if name == 'classifier' or name == 'fc':
+                fc1 = module[0]
+                model.__delattr__(name)
+                model.__setattr__(name, fc1)
+    elif str(net).startswith('MobileNetV2'):
+        for name, module in model.named_children():
+            if name == 'classifier' or name == 'fc':
+                fc1 = nn.Linear(in_features=1280, out_features=1024)
+                model.__delattr__(name)
+                model.__setattr__(name, fc1)
+    else:
+        for name, module in model.named_children():
+            if name == 'classifier' or name == 'fc':
+                model.__setattr__(name, Identity())
     if not inplace:
         return model
 
@@ -111,10 +130,15 @@ class OctopusNet(torch.nn.Module):
                     self.in_features = m.in_features
                     break
         else:
-            for m in bodynet.classifier.modules():
-                if isinstance(m, torch.nn.Linear):
-                    self.in_features = m.in_features
-                    break
+            if str(bodynet).startswith('VGG'):
+                self.in_features = 4096
+            elif str(bodynet).startswith('MobileNetV2'):
+                self.in_features = 1024
+            else:
+                for m in bodynet.classifier.modules():
+                    if isinstance(m, torch.nn.Linear):
+                        self.in_features = m.in_features
+                        break
         assert self.in_features is not None, 'could not find Linear layer in classifier of body network'
         self.bodynet = remove_fc(bodynet, inplace=False)
         self.bodynet.num_classes = -1

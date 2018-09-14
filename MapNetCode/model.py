@@ -10,13 +10,16 @@ class MapNet(nn.Module):
 
         # set up intermediate layer for mapping feature space
         self.mapping = torch.nn.Sequential(
-            nn.Linear(in_features=self.in_features, out_features=2048),
+            # nn.Linear(in_features=self.in_features, out_features=2048),
+            nn.Linear(in_features=self.in_features, out_features=4096),
             nn.ReLU(inplace=True),
-            nn.Linear(in_features=2048, out_features=4096),
+            # nn.Linear(in_features=2048, out_features=4096),
+            nn.Linear(in_features=4096, out_features=4096),
             nn.ReLU(inplace=True),
-            nn.Linear(in_features=4096, out_features=2048),
-            nn.ReLU(inplace=True),
-            nn.Linear(in_features=2048, out_features=self.in_features),
+            # nn.Linear(in_features=4096, out_features=2048),
+            # nn.ReLU(inplace=True),
+            # nn.Linear(in_features=2048, out_features=self.in_features),
+            nn.Linear(in_features=4096, out_features=self.in_features),
         )
         # initialize weights to produce identity mapping
         for name, param in self.mapping.named_parameters():

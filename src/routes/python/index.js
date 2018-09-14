@@ -54,6 +54,15 @@ router.post('/updateEmbedding', async (req, res, next) => {
 
 router.post('/startUpdateEmbedding', async (req, res, next) => {
     console.log('POST /startUpdateEmbedding');
+    console.log("origin: " + req.origin)
+
+    console.log("header.origin: " + req.headers.origin)
+    console.log("socket.remoteAddress: " + req.socket.remoteAddress)
+    console.log("host: " + req.host)
+    console.log("hostname: " + req.hostname)
+    console.log("ip: " + req.ip)
+    console.log("ips: " + req.ips)
+
     const { body } = req;
     console.log({ body });
     const { socketId, nodes } = body;

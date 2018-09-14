@@ -6,3 +6,7 @@ python train_multitask.py --val_file wikiart_datasets/info_artist_49_multilabel_
 get_feature.py
 
 python get_feature.py  --stat_file wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl --im_path /export/home/kschwarz/Documents/Data/Wikiart_artist49_images --batch_size 64 --info_file wikiart_datasets/info_artist_49_multilabel_val.hdf5 --weight_file models/09-05-13-36_NarrowNet128_MobileNetV2_model_best.pth.tar --model mobilenet_v2 --device 2
+
+shape dataset:
+python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/Geometric_Shapes/train_mean_std.pkl --shape_dataset --batch_size 64 --info_file test --weight_file models/09-12-09-53_ShapeDataset_NarrowNet128_MobileNetV2_model_best.pth.tar --model mobilenet_v2 --device 2
+

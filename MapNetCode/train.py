@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from faiss_master import faiss
 from Queue import Queue
 from sklearn.svm import SVC
+import shutil
 
 sys.path.append('../TSNENet')
 from loss import TSNELoss
@@ -314,7 +315,7 @@ def svm_k_nearest_neighbors(vectors, sample_idcs, k=1):
     prob = clf.predict_proba(vectors)[:, 1]
     prob[sample_idcs] = -1
 
-    neighbors = np.argsort(prob)[-1::-1]
+    neighbors = np.argsort(prob)[-1::-1][:k]
 
     stop = time.time()
     print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
@@ -346,9 +347,10 @@ class ChangeRateLogger(object):
         return stop
 
 
-def train(net, feature, image_id, label, old_embedding, target_embedding,
+def train(net, feature, image_id, old_embedding, target_embedding,
           idx_modified, idx_old_neighbors, idx_new_neighbors,
-          lr=1e-3, experiment_id=None, socket_id=None, scale_func=None):
+          lr=1e-3, experiment_id=None, socket_id=None, scale_func=None,
+          categories=None, label=None):
     global cycle, previously_modified
     cycle += 1
     # log and saving options
@@ -380,6 +382,7 @@ def train(net, feature, image_id, label, old_embedding, target_embedding,
         old_embedding = torch.from_numpy(old_embedding.copy())
     if not isinstance(target_embedding, torch.Tensor):
         target_embedding = torch.from_numpy(target_embedding.copy())
+
     if use_cuda:
         net = net.cuda()
     net.train()
@@ -631,7 +634,7 @@ def train(net, feature, image_id, label, old_embedding, target_embedding,
         if socket_id is not None:
             position = new_embedding if scale_func is None else scale_func(new_embedding)
             nodes = make_nodes(position=position, index=True, label=label)
-            send_payload(nodes, socket_id)
+            send_payload(nodes, socket_id, categories=categories)
 
         t_send_end = time.time()
         t_send.append(t_send_end - t_send_start)
@@ -699,6 +702,20 @@ def train(net, feature, image_id, label, old_embedding, target_embedding,
 
     print('Finished training.')
     return new_embedding
+
+
+def reset(experiment_id=None):
+    global cycle, previously_modified
+    cycle = 0
+    previously_modified = np.array([], dtype=np.long)
+
+    exp_name = 'MapNet'
+
+    if experiment_id is not None:
+        exp_name = experiment_id + '_' + exp_name
+    if os.path.isdir(os.path.join('runs/mapping', exp_name)):
+        shutil.rmtree(os.path.join('runs/mapping', exp_name))
+
 
 
 if __name__ == '__main__':

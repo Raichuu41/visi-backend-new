@@ -17,7 +17,7 @@ from random import uniform
 sys.path.append('MapNetCode')
 from initialization import initialize
 from communication import make_nodes, read_nodes
-from train import train, get_modified, get_neighborhood, mutual_k_nearest_neighbors
+from train import train, get_modified, get_neighborhood, mutual_k_nearest_neighbors, reset
 
 import pickle
 
@@ -132,9 +132,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
             #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            print(data)
+            # print(data)
 
             # Katjas code goes here
+            reset(experiment_id)
             net, dataset_info = initialize(shape_dataset=True, experiment_id=experiment_id)
             experiment_id = dataset_info['experiment_id']
             # introduce scale factor
@@ -261,16 +262,13 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             idx_new_neighbors = mutual_k_nearest_neighbors(new_position[:N], idx_modified, k=50)
 
             new_position = train(net, dataset_info['feature'][:N], dataset_info['name'].values.astype(str)[:N],
-                                 dataset_info['label'][:N],
                                  old_position[:N], new_position,
                                  idx_modified, idx_old_neighbors, idx_new_neighbors,
+                                 categories=dataset_info['categories'], label=dataset_info['label'][:N],
                                  lr=1e-3, experiment_id=experiment_id, socket_id=self.socket_id,
                                  scale_func=dataset_info['scale_func'])
 
-            print('HELLO')
             dataset_info['position'] = new_position
-
-
 
             # TODO was ist wenn das mehrfach gestartet wird
             # self.inter = SetInterval(0.6, update_embedding_handler, id)
@@ -282,6 +280,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # make json
             # data = json.dumps({}).encode()
             self.wfile.write('update_embedding started for ' + str(self.socket_id))  # body zurueckschicken
+            print("HELLO")
 
         if self.path == "/stopUpdateEmbedding":
             print("post /stopUpdateEmbedding")

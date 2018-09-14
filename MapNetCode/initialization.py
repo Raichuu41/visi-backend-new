@@ -35,7 +35,7 @@ def initialize(shape_dataset=False, **kwargs):   #(info_file, feature_file, weig
     if 'experiment_id' not in kwargs.keys():
         kwargs['experiment_id'] = None
     if shape_dataset:
-        if kwargs['experiment_id'] is None:
+        if kwargs['experiment_id'] is None or 'ShapeDataset' in kwargs['experiment_id']:
             kwargs['experiment_id'] = 'ShapeDataset'
         else:
             kwargs['experiment_id'] = 'ShapeDataset_' + kwargs['experiment_id']

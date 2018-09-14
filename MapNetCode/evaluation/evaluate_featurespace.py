@@ -14,7 +14,8 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 
 
-feature_file = 'features/ShapeDataset_NarrowNet128_MobileNetV2_test.hdf5'  # ''features/VGG_info_artist_49_multilabel_val.hdf5'#'features/MobileNetV4_info_artist_49_multilabel_test_full_images_128.hdf5'
+# feature_file = 'features/ShapeDataset_NarrowNet128_MobileNetV2_test.hdf5'  # ''features/VGG_info_artist_49_multilabel_val.hdf5'#'features/MobileNetV4_info_artist_49_multilabel_test_full_images_128.hdf5'
+feature_file = 'runs/mapping/ShapeDataset_ShapeDataset_09-14-14-26_separate_colors_MapNet/features/cycle_001_feature.hdf5'
 info_file = '/export/home/kschwarz/Documents/Data/Geometric_Shapes/labels.hdf5'
 
 
@@ -27,9 +28,9 @@ def load_data(feature_file, info_file):
     df = dd.io.load(info_file)['df']
 
     data = dd.io.load(feature_file)
-    names, features = data['image_names'], data['features']
+    names, features = data['image_id'], data['feature']
 
-    is_shape_dataset = feature_file.split('/')[-1].startswith('ShapeDataset')
+    is_shape_dataset = 'ShapeDataset' in feature_file
     if is_shape_dataset:
         outdir = 'ShapeDataset'
         category = ['shape', 'n_shapes', 'color_shape', 'color_background']

@@ -44,18 +44,16 @@ router.post('/updateEmbedding', async (req, res, next) => {
 
     const socket = req.app.io.sockets.sockets[socket_id];
     if (!socket) return next(new Error(`No socket with ID: ${socket_id} found`)); // TODO maybe deliver error to frontend
-    socket.emit('updateEmbedding', body);
-    // console.log(body.io.sockets);
-    // socket.emit('updateEmbedding', body);
-
-    res.send();
+    socket.emit('updateEmbedding', body, (confirm) => {
+        console.log(confirm);
+        res.json(confirm);
+    });
 });
 
 
-router.post('/startUpdateEmbedding', async (req, res, next) => {
+router.post('/startUpdateEmbedding', async (req, resres, next) => {
     console.log('POST /startUpdateEmbedding');
     console.log("origin: " + req.origin)
-
     console.log("header.origin: " + req.headers.origin)
     console.log("socket.remoteAddress: " + req.socket.remoteAddress)
     console.log("host: " + req.host)
@@ -77,7 +75,7 @@ router.post('/startUpdateEmbedding', async (req, res, next) => {
             body: JSON.stringify(body),
         }).then(response => response.text());
         const diff = process.hrtime(time);
-        console.log(data);
+        //console.log(data);
         res.send(data);
         console.log(`startUpdateEmbedding from python took ${diff[0] + diff[1] / 1e9} seconds`);
     } catch (err) {
@@ -106,7 +104,6 @@ router.post('/stopUpdateEmbedding', async (req, res, next) => {
             body: JSON.stringify(body),
         }).then(response => response.text());
         const diff = process.hrtime(time);
-        console.log(data);
         res.send(data);
         console.log(`stopUpdateEmbedding from python took ${diff[0] + diff[1] / 1e9} seconds`);
     } catch (err) {

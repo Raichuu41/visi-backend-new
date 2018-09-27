@@ -58,7 +58,7 @@ class Wikiart(data.Dataset):
         labels_to_ints = self.labels_to_ints.copy()
         for k in labels_to_ints.keys():
             labels_to_ints[k][None] = -1
-        img = Image.open(os.path.join(self.impath, self.df['image_id'][index] + '.jpg'))
+        img = Image.open(os.path.join(self.impath, self.df['image_id'][index] + '.jpg')).convert(mode='RGB')
         if self.transform is not None:
             img = self.transform(img)
         labels = [self.df[c][index] for c in self.classes]
@@ -68,7 +68,7 @@ class Wikiart(data.Dataset):
 
 
 def compute_mean_std(path_to_info_file, impath='/export/home/kschwarz/Documents/Data/Wikiart_artist49_images'):
-    dset = Wikiart(path_to_info_file, path_to_images=impath, classes=['artist_name'],
+    dset = Wikiart(path_to_info_file, path_to_images=impath, classes=['image_id'],
                    transform=Compose([Resize((224, 224)), ToTensor()]))
     batch_size = 1000
     loader = data.DataLoader(dset, batch_size=batch_size, num_workers=8)
@@ -89,8 +89,14 @@ def compute_mean_std(path_to_info_file, impath='/export/home/kschwarz/Documents/
     if not os.path.isdir('wikiart_datasets'):
         os.makedirs('wikiart_datasets')
 
-    fname = os.path.join('wikiart_datasets', path_to_info_file.split('/')[-1].split('.')[0])
+    # fname = os.path.join('wikiart_datasets', path_to_info_file.split('/')[-1].split('.')[0])
+    fname = path_to_info_file.replace('.hdf5', '')
     with open(fname + '_mean_std.pkl', 'w') as f:
         pickle.dump({'mean': list(mean.numpy()), 'std': list(std.numpy())}, f)
 
     print('saved \n\tstat file: {}'.format(fname + '_mean_std.pkl'))
+
+
+# path_to_info_file = '/export/home/kschwarz/Documents/Data/BAM/info_train.hdf5'
+# impath = '/export/home/kschwarz/Documents/Data/BAM'
+# compute_mean_std(path_to_info_file, impath)

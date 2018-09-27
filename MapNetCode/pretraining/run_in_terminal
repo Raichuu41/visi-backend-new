@@ -2,6 +2,12 @@ train_multitask.py
 
 python train_multitask.py --val_file wikiart_datasets/info_artist_49_multilabel_val.hdf5 --train_file wikiart_datasets/info_artist_49_multilabel_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_artist49_images --stat_file wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl --epochs 100 --batch_size 32 --lr 1e-3 --device 0 --model mobilenet_v2
 
+office dataset
+python train_multitask.py --val_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_val.hdf5 --train_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016 --stat_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_train_mean_std.pkl --epochs 100 --batch_size 32 --lr 1e-3 --device 0 --model mobilenet_v2 --office_dataset --exp_name office_dataset
+
+bam dataset
+python train_multitask.py --val_file /export/home/kschwarz/Documents/Data/BAM/info_val.hdf5 --train_file /export/home/kschwarz/Documents/Data/BAM/info_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/BAM --stat_file /export/home/kschwarz/Documents/Data/BAM/info_train_mean_std.pkl --epochs 100 --batch_size 32 --lr 1e-3 --device 0 --model mobilenet_v2 --bam_dataset --exp_name bam_dataset
+
 
 get_feature.py
 
@@ -10,3 +16,8 @@ python get_feature.py  --stat_file wikiart_datasets/info_artist_49_multilabel_tr
 shape dataset:
 python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/Geometric_Shapes/train_mean_std.pkl --shape_dataset --batch_size 64 --info_file test --weight_file models/09-12-09-53_ShapeDataset_NarrowNet128_MobileNetV2_model_best.pth.tar --model mobilenet_v2 --device 2
 
+office dataset:
+python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_train_mean_std.pkl --office_dataset --im_path /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016 --batch_size 64 --info_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_test.hdf5 --weight_file models/09-26-01-04_NarrowNet128_MobileNetV2_office_dataset_model_best.pth.tar --model mobilenet_v2 --device 2
+
+bam dataset
+python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/BAM/info_train_mean_std.pkl --bam_dataset --im_path /export/home/kschwarz/Documents/Data/BAM --batch_size 64 --info_file /export/home/kschwarz/Documents/Data/BAM/info_test.hdf5 --weight_file models/09-27-12-15_NarrowNet128_MobileNetV2_bam_dataset_model_best.pth.tar --model mobilenet_v2 --device 2

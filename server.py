@@ -17,15 +17,19 @@ from random import uniform
 sys.path.append('MapNetCode')
 from initialization import initialize
 from communication import make_nodes, read_nodes
-from train import train, get_modified, get_neighborhood, mutual_k_nearest_neighbors, reset
+from train import train, get_modified, get_neighborhood, \
+    mutual_k_nearest_neighbors, svm_k_nearest_neighbors, \
+    listed_k_nearest_neighbors, score_k_nearest_neighbors, \
+    reset, select_neighbors
 
 import pickle
 
 # initialize global dataset information (image ids, features, embedding) and network
 dataset_info = None
 net = None
-experiment_id = time.strftime('%m-%d-%H-%M') + '_separate_colors'
+experiment_id = 'LargeFeat'#time.strftime('%m-%d-%H-%M') + '_dropout'
 N = None
+dataset = 'wikiart'            # ['shape', 'wikiart', 'office', 'bam']
 
 StartTime = time.time()
 
@@ -116,7 +120,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
-        global dataset_info, net, experiment_id, N
+        global dataset_info, net, experiment_id, N, dataset
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -135,8 +139,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # print(data)
 
             # Katjas code goes here
-            reset(experiment_id)
-            net, dataset_info = initialize(shape_dataset=True, experiment_id=experiment_id)
+            reset(experiment_id, dataset=dataset)
+            net, dataset_info = initialize(dataset=dataset, experiment_id=experiment_id, batch_size=100,
+                                           lr=1e-4)
             experiment_id = dataset_info['experiment_id']
             # introduce scale factor
             limits = (-15, 15)
@@ -249,6 +254,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(self.socket_id)
 
             data = read_nodes(body['nodes'])
+            self.wfile.write('update_embedding stopped for ' + str(self.socket_id))  # body zurueckschicken
 
             # Katjas code goes here
             new_position = np.stack([data['x'], data['y']], axis=1)
@@ -256,19 +262,43 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             old_position = dataset_info['position']
 
             idx_modified = get_modified(old_position[:N], new_position, tol=1e-4)
-            # idx_old_neighbors = get_neighborhood(old_position[:N], idx_modified)
+            if len(idx_modified) == 0 or len(idx_modified) == len(dataset_info['name']):  # TODO: fix recall bug
+                print('Modified {} samples. - Invalid for training.')
+                return 0
+
+            select_neighbors(idx_modified, dataset_info['feature'][:N],
+                             dataset_info['scale_func'](dataset_info['position']),
+                             dataset_info['categories'], dataset_info['label'][:N],
+                             self.socket_id, k=50, neighbor_fn=score_k_nearest_neighbors)
+
+
+
+            # data = read_nodes(body['nodes'])
+            # self.wfile.write('update_embedding started for ' + str(self.socket_id))  # body zurueckschicken
+            #
+            # # Katjas code goes here
+            # new_position = np.stack([data['x'], data['y']], axis=1)
+            # new_position = dataset_info['inverse_scale_func'](new_position)
+            # old_position = dataset_info['position']
+            #
+            # idx_modified = get_modified(old_position[:N], new_position, tol=1e-4)
+            # if len(idx_modified) == 0 or len(idx_modified) == len(dataset_info['name']):       # TODO: fix recall bug
+            #     print('Modified {} samples. - Invalid for training.')
+            #     return 0
+            # # idx_old_neighbors = get_neighborhood(old_position[:N], idx_modified)
+            # # idx_new_neighbors = get_neighborhood(new_position[:N], idx_modified)
+            # idx_old_neighbors = mutual_k_nearest_neighbors(old_position[:N], idx_modified, k=50)
             # idx_new_neighbors = get_neighborhood(new_position[:N], idx_modified)
-            idx_old_neighbors = mutual_k_nearest_neighbors(old_position[:N], idx_modified, k=50)
-            idx_new_neighbors = mutual_k_nearest_neighbors(new_position[:N], idx_modified, k=50)
-
-            new_position = train(net, dataset_info['feature'][:N], dataset_info['name'].values.astype(str)[:N],
-                                 old_position[:N], new_position,
-                                 idx_modified, idx_old_neighbors, idx_new_neighbors,
-                                 categories=dataset_info['categories'], label=dataset_info['label'][:N],
-                                 lr=1e-3, experiment_id=experiment_id, socket_id=self.socket_id,
-                                 scale_func=dataset_info['scale_func'])
-
-            dataset_info['position'] = new_position
+            #
+            # new_position = train(net, dataset_info['feature'][:N], dataset_info['name'].values.astype(str)[:N],
+            #                      old_position[:N], new_position,
+            #                      idx_modified, idx_old_neighbors, idx_new_neighbors,
+            #                      categories=dataset_info['categories'], label=dataset_info['label'][:N],
+            #                      lr=1e-3, experiment_id=experiment_id, socket_id=self.socket_id,
+            #                      scale_func=dataset_info['scale_func'])
+            #
+            # dataset_info['position'] = new_position
+            return 0
 
             # TODO was ist wenn das mehrfach gestartet wird
             # self.inter = SetInterval(0.6, update_embedding_handler, id)
@@ -279,8 +309,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # make json
             # data = json.dumps({}).encode()
-            self.wfile.write('update_embedding started for ' + str(self.socket_id))  # body zurueckschicken
-            print("HELLO")
 
         if self.path == "/stopUpdateEmbedding":
             print("post /stopUpdateEmbedding")
@@ -288,26 +316,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-
-            # get body from request
-            # content_len = int(self.headers['Content-Length'])
-            # body = self.rfile.read(content_len)
-
-            # convert body to list
-            # data = json.loads(str(body).decode('utf-8'))  # python 2
-            # data = json.loads(str(body, encoding='utf-8'))      # python 3
-            # print(data)
-
-            # Katjas code goes here
-            print(self.socket_id)
-            self.inter.cancel()
-            #t = threading.Timer(5, self.inter.cancel)
-            #t.start()
-
-            #print(id)
-            # make json
-            # data = json.dumps({}).encode()
-            self.wfile.write('update_embedding stopped for ' + str(self.socket_id))  # body zurueckschicken
 
         return
 

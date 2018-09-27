@@ -35,6 +35,11 @@ parser.add_argument('--im_path', default='/export/home/kschwarz/Documents/Data/W
 parser.add_argument('--stat_file', default='wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl',
                     type=str, help='.pkl file containing artist dataset mean and std.')
 parser.add_argument('--shape_dataset', default=False, action='store_true', help='Use artificial shape dataset')
+parser.add_argument('--office_dataset', default=False, action='store_true', help='Use office dataset')
+parser.add_argument('--bam_dataset', default=False, action='store_true', help='Use bam dataset')
+
+parser.add_argument('--task_selection', default=None, type=str, help='Task (categories) on which to train')
+
 
 # model
 parser.add_argument('--model', type=str, help='Choose from: mobilenet_v2, vgg16_bn')
@@ -63,6 +68,8 @@ args = parser.parse_args()
 
 
 def main():
+    args.task_selection = args.task_selection.split(',')
+
     torch.manual_seed(args.seed)
 
     # LOAD DATASET
@@ -87,13 +94,23 @@ def main():
     ])
 
     if not args.shape_dataset:
-        classes = ['artist_name', 'genre', 'style', 'technique', 'century']
+        if args.task_selection is not None:
+            classes = args.task_selection
+        elif args.office_dataset:
+            classes = ['style', 'genre']
+        elif args.bam_dataset:
+            classes = ['content', 'emotion', 'media']
+        else:
+            classes = ['artist_name', 'genre', 'style', 'technique', 'century']
         valset = Wikiart(path_to_info_file=args.val_file, path_to_images=args.im_path,
                          classes=classes, transform=val_transform)
         trainset = Wikiart(path_to_info_file=args.train_file, path_to_images=args.im_path,
                            classes=classes, transform=train_transform)
     else:
-        classes = ['shape', 'n_shapes', 'color_shape', 'color_background']
+        if args.task_selection is not None:
+            classes = args.task_selection
+        else:
+            classes = ['shape', 'n_shapes', 'color_shape', 'color_background']
         valset = ShapeDataset(root_dir='/export/home/kschwarz/Documents/Data/Geometric_Shapes', split='val',
                               classes=classes, transform=val_transform)
         trainset = ShapeDataset(root_dir='/export/home/kschwarz/Documents/Data/Geometric_Shapes', split='train',
@@ -200,6 +217,9 @@ def main():
 
             loss = Variable(torch.Tensor([0])).type_as(data[0])
             for i, o, t, p in zip(range(len(classes)), outputs, target, preds):
+                # in case of None labels
+                mask = t != -1
+                o, t, p = o[mask], t[mask], p[mask]
                 loss += criterion(o, t)
                 # measure class accuracy and record loss
                 class_acc[i].update((torch.sum(p == t).type(torch.FloatTensor) / t.size(0)).data)
@@ -301,7 +321,10 @@ def main():
             break
 
     # report best values
-    best = torch.load(os.path.join(log_dir, expname + '_model_best.pth.tar'), map_location=lambda storage, loc: storage)
+    try:
+        best = torch.load(os.path.join(log_dir, expname + '_model_best.pth.tar'), map_location=lambda storage, loc: storage)
+    except IOError:         # could be only one task
+        best = torch.load(os.path.join(log_dir, expname + '_model_best_mean_acc.pth.tar'), map_location=lambda storage, loc: storage)
     print('Finished training after epoch {}:\n\tbest acc score: {}\n\tacc: {}\n\t class acc: {}'
           .format(best['epoch'], best['best_acc_score'], best['acc'], best['class_acc']))
     print('Best model mean accuracy: {}'.format(best_acc))

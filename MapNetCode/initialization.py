@@ -10,12 +10,21 @@ from model import MapNet
 
 
 info_file = '/export/home/kschwarz/Documents/Masters/wikiart/datasets/info_artist_49_multilabel_test.hdf5'
-feature_file = 'features/MobileNetV4_info_artist_49_multilabel_test_full_images_128.hdf5'
-weight_file = 'runs/embedder/08-03-12-48_TSNENet_large_model_model_best.pth.tar'
+feature_file = 'features/NarrowNet128_MobileNetV2_info_artist_49_multilabel_test.hdf5'
+# feature_file = 'features/MobileNetV2_info_artist_49_multilabel_test.hdf5'
+weight_file = 'runs/embedder/models/LargeFeat_MapNet_embedder.pth.tar'
 
 info_file_shape = '/export/home/kschwarz/Documents/Data/Geometric_Shapes/labels.hdf5'
 feature_file_shape = 'features/ShapeDataset_NarrowNet128_MobileNetV2_test.hdf5'
-weight_file_shape = 'runs/embedder/models/ShapeDataset_MapNet_embedder_09-12-13-07.pth.tar'
+weight_file_shape = 'runs/embedder/models/ShapeDataset_TEST_MapNet_embedder.pth.tar'#None#'runs/embedder/models/ShapeDataset_MapNet_embedder_09-12-13-07.pth.tar'
+
+info_file_office = '/export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_test.hdf5'
+feature_file_office = 'features/OfficeDataset_NarrowNet128_MobileNetV2_info_test.hdf5'
+weight_file_office = None#'runs/embedder/models/ShapeDataset_TEST_MapNet_embedder.pth.tar'#None#'runs/embedder/models/ShapeDataset_MapNet_embedder_09-12-13-07.pth.tar'
+
+info_file_bam = '/export/home/kschwarz/Documents/Data/BAM/info_test.hdf5'
+feature_file_bam = 'features/BAMDataset_NarrowNet128_MobileNetV2_info_test.hdf5'
+weight_file_bam = None#'runs/embedder/models/ShapeDataset_TEST_MapNet_embedder.pth.tar'#None#'runs/embedder/models/ShapeDataset_MapNet_embedder_09-12-13-07.pth.tar'
 
 # if not os.getcwd().endswith('/MapNetCode'):
 #     os.chdir(os.path.join(os.getcwd(), 'MapNetCode'))
@@ -27,14 +36,19 @@ def load_feature(feature_file):
         raise RuntimeError('Feature file not found.')
 
     data = dd.io.load(feature_file)
-    return data['image_names'], data['features']
+    try:
+        name, feature = data['image_names'], data['features']
+    except KeyError:
+        name, feature = data['image_name'], data['features']
+
+    return name, feature
 
 
-def initialize(shape_dataset=False, **kwargs):   #(info_file, feature_file, weight_file=None):
+def initialize(dataset='wikiart', **kwargs):   #(info_file, feature_file, weight_file=None):
     print(os.getcwd())
     if 'experiment_id' not in kwargs.keys():
         kwargs['experiment_id'] = None
-    if shape_dataset:
+    if dataset == 'shape':
         if kwargs['experiment_id'] is None or 'ShapeDataset' in kwargs['experiment_id']:
             kwargs['experiment_id'] = 'ShapeDataset'
         else:
@@ -53,16 +67,38 @@ def initialize(shape_dataset=False, **kwargs):   #(info_file, feature_file, weig
         data.index = range(len(data))
 
         id = data['image_id']
-        categories = ['shape', 'n_shapes', 'color_shape', 'color_background', 'group']
+        categories = sorted(['shape', 'n_shapes', 'color_shape', 'color_background'])
         ft_id, feature = load_feature(feature_file_shape)
+
+    elif dataset == 'office':
+        if kwargs['experiment_id'] is None or 'OfficeDataset' in kwargs['experiment_id']:
+            kwargs['experiment_id'] = 'OfficeDataset'
+        else:
+            kwargs['experiment_id'] = 'OfficeDataset' + kwargs['experiment_id']
+        data = dd.io.load(info_file_office)['df']
+        id = data['image_id']
+        categories = sorted(['style', 'genre'])
+        ft_id, feature = load_feature(feature_file_office)
+
+    elif dataset == 'bam':
+        if kwargs['experiment_id'] is None or 'BAMDataset' in kwargs['experiment_id']:
+            kwargs['experiment_id'] = 'BAMDataset'
+        else:
+            kwargs['experiment_id'] = 'BAMDataset' + kwargs['experiment_id']
+        data = dd.io.load(info_file_bam)['df']
+        id = data['image_id']
+        categories = sorted(['content', 'emotion', 'media'])
+        ft_id, feature = load_feature(feature_file_bam)
 
     else:
         data = dd.io.load(info_file)['df']
         id = data['image_id']
-        categories = ['artist_name', 'style', 'genre', 'technique', 'century']
+        categories = sorted(['artist_name', 'style', 'genre', 'technique', 'century'])
         ft_id, feature = load_feature(feature_file)
 
-    label = np.stack([data[k] if k in categories else [None] * len(id) for k in data.keys()], axis=1)
+    label = np.stack([data[k] for k in sorted(data.keys()) if k in categories], axis=1)
+    label = np.concatenate([label, np.full((len(label), 1), None)], axis=1)
+    categories.append('group')
 
     if not (ft_id == id).all():
         raise ValueError('Image IDs in feature file do not match IDs in info file.')
@@ -70,10 +106,14 @@ def initialize(shape_dataset=False, **kwargs):   #(info_file, feature_file, weig
 
     # initialize the network
     net = MapNet(feature_dim=feature.shape[1], output_dim=2)
-    if shape_dataset:
-        initialize_embedder(net.embedder, weight_file_shape, **kwargs)
+    if dataset == 'shape':
+        initialize_embedder(net.embedder, weight_file_shape, feature, **kwargs)
+    elif dataset == 'office':
+        initialize_embedder(net.embedder, weight_file_office, feature, **kwargs)
+    elif dataset == 'bam':
+        initialize_embedder(net.embedder, weight_file_bam, feature, **kwargs)
     else:
-        initialize_embedder(net.embedder, weight_file, **kwargs)
+        initialize_embedder(net.embedder, weight_file, feature, **kwargs)
     embedding = compute_embedding(net.embedder, feature)
 
     data = {

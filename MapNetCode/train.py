@@ -9,17 +9,24 @@ import torch
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from faiss_master import faiss
-from Queue import Queue
 from sklearn.svm import SVC
 import shutil
+import torch.nn as nn
+import copy
 
 sys.path.append('../TSNENet')
 from loss import TSNELoss
 from dataset import IndexDataset
 
-sys.path.append('../FullPipeline')
 import matplotlib as mpl
 mpl.use('TkAgg')
+
+sys.path.append('../SmallNets')
+from triplets_loss import TripletLoss
+from triplets_utils import RandomNegativeTripletSelector, KHardestNegativeTripletSelector, BinaryTripletSelector
+
+
+sys.path.append('../FullPipeline')
 import matplotlib.pyplot as plt
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, load_weights
 
@@ -33,6 +40,7 @@ from communication import send_payload, make_nodes
 
 cycle = 0
 previously_modified = np.array([], dtype=np.long)
+torch.cuda.set_device(0)
 
 
 def initialize_embedder(embedder, weight_file=None, feature=None,
@@ -52,6 +60,18 @@ def initialize_embedder(embedder, weight_file=None, feature=None,
     # pretrained_dict = load_weights(weight_file, embedder.state_dict())
     pretrained_dict = load_weights(weight_file, embedder.state_dict(), prefix_file='embedder.')
     embedder.load_state_dict(pretrained_dict)
+
+
+class NormalizedMSE(nn.Module):
+    def __init__(self):
+        super(NormalizedMSE, self).__init__()
+        self.mse = nn.MSELoss(reduction='none')
+
+    def forward(self, vec1, vec2):
+        abs_dist = self.mse(vec1.data, vec2.data).mean(dim=1)
+        norm = torch.max(vec1.norm(p=2, dim=1), vec2.norm(p=2, dim=1))
+        dist = abs_dist / norm
+        return dist.mean()
 
 
 # TODO: random split of train test fine? Consider using subset for training only.
@@ -93,6 +113,7 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
                                use_cuda=use_cuda)
     test_criterion = TSNELoss(N=len(idx_test), early_exaggeration_fac=early_exaggeration_factor,
                               use_cuda=use_cuda)
+    noise_criterion = NormalizedMSE()
     print('Compute beta for KL-Loss...')
     train_criterion._compute_beta(torch.from_numpy(feature[idx_train]).cuda())
     test_criterion._compute_beta(torch.from_numpy(feature[idx_test]).cuda())
@@ -101,6 +122,8 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
     log_interval = 10
 
     def train(epoch):
+        kl_losses = AverageMeter()
+        noise_regularization = AverageMeter()
         losses = AverageMeter()
         # if epoch == stop_early_compression:
         #     print('stop early compression')
@@ -110,8 +133,14 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
         for batch_idx, (fts, idx) in enumerate(train_loader):
             fts = torch.autograd.Variable(fts.cuda()) if use_cuda else torch.autograd.Variable(fts)
             outputs = embedder(fts)
-            loss = train_criterion(fts, outputs, idx)
+            noise_outputs = embedder(fts + 0.1 * torch.rand(fts.shape).type_as(fts))
 
+            kl_loss = train_criterion(fts, outputs, idx)
+            noise_reg = noise_criterion(outputs, noise_outputs)
+            loss = kl_loss + 10 * noise_reg.type_as(kl_loss)
+
+            kl_losses.update(kl_loss.data, len(idx))
+            noise_regularization.update(noise_reg.data, len(idx))
             losses.update(loss.data, len(idx))
 
             # if epoch <= stop_early_compression:
@@ -131,10 +160,16 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
                     float(losses.val), float(losses.avg),
                     optimizer.param_groups[-1]['lr']))
 
+        log.write('kl_loss', float(kl_losses.avg), epoch, test=False)
+        log.write('noise_reg', float(noise_regularization.avg), epoch, test=False)
         log.write('loss', float(losses.avg), epoch, test=False)
+
         return losses.avg
 
+
     def test(epoch):
+        kl_losses = AverageMeter()
+        noise_regularization = AverageMeter()
         losses = AverageMeter()
 
         # switch to evaluation mode
@@ -142,7 +177,14 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
         for batch_idx, (fts, idx) in enumerate(test_loader):
             fts = torch.autograd.Variable(fts.cuda()) if use_cuda else torch.autograd.Variable(fts)
             outputs = embedder(fts)
-            loss = test_criterion(fts, outputs, idx)
+            noise_outputs = embedder(fts + 0.1 * torch.rand(fts.shape).type_as(fts))
+
+            kl_loss = test_criterion(fts, outputs, idx)
+            noise_reg = noise_criterion(outputs, noise_outputs)
+            loss = kl_loss + 10 * noise_reg.type_as(kl_loss)
+
+            kl_losses.update(kl_loss.data, len(idx))
+            noise_regularization.update(noise_reg.data, len(idx))
             losses.update(loss.data, len(idx))
 
             if batch_idx % log_interval == 0:
@@ -151,6 +193,8 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
                     epoch, (batch_idx + 1) * len(idx), len(test_loader.sampler),
                     float(losses.val), float(losses.avg)))
 
+        log.write('kl_loss', float(kl_losses.avg), epoch, test=True)
+        log.write('noise_reg', float(noise_regularization.avg), epoch, test=True)
         log.write('loss', float(losses.avg), epoch, test=True)
         return losses.avg
 
@@ -159,12 +203,14 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
     epoch = 1
 
     best_loss = float('inf')
+    best_epoch = -1
     while optimizer.param_groups[-1]['lr'] >= lr_threshold:
         train(epoch)
         testloss = test(epoch)
         scheduler.step(testloss)
         if testloss < best_loss:
             best_loss = testloss
+            best_epoch = epoch
             torch.save({
                 'epoch': epoch,
                 'best_loss': best_loss,
@@ -174,7 +220,7 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
             }, os.path.join(outpath_model, exp_name + '.pth.tar'))
         epoch += 1
 
-    print('Finished training embedder with best loss: {}'.format(best_loss))
+    print('Finished training embedder with best loss: {} from epoch {}'.format(best_loss, best_epoch))
 
     return os.path.join(outpath_model, exp_name + '.pth.tar')
 
@@ -243,6 +289,7 @@ def get_neighborhood(position, idx_modified):
     dist, idx = index.search(center.astype(np.float32), len(position))
     in_modified = np.isin(idx, idx_modified)
     max_dist = 1.1 * np.max(dist[in_modified])
+    print(max_dist)
     neighbors = idx[(dist <= max_dist) * (in_modified.__invert__())]
 
     stop = time.time()
@@ -256,7 +303,27 @@ def mutual_k_nearest_neighbors(vectors, sample_idcs, k=1):
     start = time.time()
     index = faiss.IndexFlatL2(vectors.shape[1])  # build the index
     index.add(vectors.astype(np.float32))  # add vectors to the index
-    _, idx = index.search(vectors[sample_idcs].astype(np.float32), len(vectors))
+    dist, idx = index.search(vectors[sample_idcs].astype(np.float32), len(vectors))
+
+    # the neighbor score for each sample is computed as the sum of distances to all the samples
+    scores = np.zeros(len(vectors))
+    for i in range(len(vectors)):
+        mask = idx == i
+        scores[i] = dist[mask].sum()
+    neighbors = np.argsort(scores)
+    neighbors = neighbors[np.isin(neighbors, sample_idcs).__invert__()][:k]
+
+    stop = time.time()
+    print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
+    return neighbors
+
+
+def score_k_nearest_neighbors(vectors, sample_idcs, k=1):
+    print('Find high dimensional neighbors...')
+    start = time.time()
+    index = faiss.IndexFlatL2(vectors.shape[1])  # build the index
+    index.add(vectors.astype(np.float32))  # add vectors to the index
+    dist, idx = index.search(vectors[sample_idcs].astype(np.float32), len(vectors))
 
     mask = np.isin(idx, sample_idcs).__invert__()
     idx = idx[mask].reshape(len(idx), -1)
@@ -296,22 +363,26 @@ def listed_k_nearest_neighbors(vectors, sample_idcs, k=1):
     return neighbors
 
 
-def svm_k_nearest_neighbors(vectors, sample_idcs, k=1):
+def svm_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1):
     # train an SVM to separate feature space into classes
     print('Find high dimensional neighbors...')
     start = time.time()
 
     N_unlabeled = 500
-    clf = SVC(kernel='linear', C=0.5, gamma='auto', class_weight='balanced', probability=True)
+    clf = SVC(kernel='rbf', C=1.0, gamma='auto', probability=True)
 
     idx_unlabeled = np.setdiff1d(range(len(vectors)), sample_idcs)
     idx_unlabeled = np.random.choice(idx_unlabeled, N_unlabeled, replace=False)
+    if negative_idcs is None:
+        negative_idcs = []
 
-    train_data = np.concatenate([vectors[sample_idcs], vectors[idx_unlabeled]])
+
+    train_data = np.concatenate([vectors[sample_idcs], vectors[idx_unlabeled], vectors[negative_idcs]])
+    sample_weights = np.concatenate([5*np.ones(len(sample_idcs)), np.ones(N_unlabeled), 10*np.ones(len(negative_idcs))])
 
     labels = np.zeros(len(train_data))
     labels[:len(sample_idcs)] = 1
-    clf.fit(X=train_data, y=labels)
+    clf.fit(X=train_data, y=labels, sample_weight=sample_weights)
     prob = clf.predict_proba(vectors)[:, 1]
     prob[sample_idcs] = -1
 
@@ -322,16 +393,50 @@ def svm_k_nearest_neighbors(vectors, sample_idcs, k=1):
     return neighbors
 
 
+def select_neighbors(sample_idcs, feature, position, categories, label, socket_id, k=1,
+                     neighbor_fn=mutual_k_nearest_neighbors):
+    # get high dim nn
+    # neighbors = mutual_k_nearest_neighbors(feature, sample_idcs, k=k)
+    neighbors = neighbor_fn(feature, sample_idcs, k=k)
+    label[:, -1] = 'others'
+    label[sample_idcs, -1] = 'modified'
+    label[neighbors, -1] = 'neighbors'
+
+    if socket_id is not None:
+        nodes = make_nodes(position=position, index=True, label=label)
+        send_payload(nodes, socket_id, categories=categories)
+
+
 class ChangeRateLogger(object):
-    def __init__(self, n_track, threshold):
+    def __init__(self, n_track, threshold, order='smaller'):
         self.n_track = n_track
         self.threshold = threshold
         self.data = []
+        self.order = order
 
     def check_threshold(self):
         tuple_data = np.stack([self.data[:-1], self.data[1:]], axis=1)
-        diffs = np.array(map(lambda x: np.abs(x[1] - x[0]), tuple_data))
-        stop = np.all(diffs < self.threshold)
+        diffs = np.array(map(lambda x: x[1] - x[0], tuple_data))
+
+        thresh_stop = np.all(np.abs(diffs) < self.threshold)
+        if thresh_stop:
+            print('ChangeRateLogger: Change between last {} values was less than {}. Send stop criterion.'
+                  .format(self.n_track, self.threshold))
+
+        if self.order == 'smaller':
+            order_stop = np.all(diffs > 0)
+            if order_stop:
+                print('ChangeRateLogger: Last {} values have all increased. Send stop criterion.'
+                      .format(self.n_track, self.threshold))
+        elif self.order == 'larger':
+            order_stop = np.all(diffs < 0)
+            if order_stop:
+                print('ChangeRateLogger: Last {} values have all decreased. Send stop criterion.'
+                      .format(self.n_track, self.threshold))
+        else:
+            order_stop = False
+
+        stop = thresh_stop or order_stop
         return stop
 
     def add_value(self, value):
@@ -341,10 +446,72 @@ class ChangeRateLogger(object):
             stop = self.check_threshold()
         else:
             stop = False
-        if stop:
-            print('ChangeRateLogger: Change between last {} values was less than {}. Send stop criterion.'
-                  .format(self.n_track, self.threshold))
         return stop
+
+
+class NormalizedDistanceLoss(nn.Module):
+    def __init__(self):
+        super(NormalizedDistanceLoss, self).__init__()
+
+    def forward(self, input):
+        upper_triangle = torch.triu(
+            torch.ones((len(input), len(input)), dtype=torch.uint8),
+            diagonal=1)
+        distances = (-2 * input.mm(torch.t(input)) + \
+                     input.pow(2).sum(dim=1).view(1, -1) + \
+                     input.pow(2).sum(dim=1).view(-1, 1))[upper_triangle]
+        # normalize distances
+        norm = torch.max(input.norm(p=2, dim=1).data)
+        distances = distances / norm
+        loss = torch.mean(distances)
+        return loss
+
+
+class ContrastiveNormalizedDistanceLoss(nn.Module):
+    def __init__(self, margin=0.2):
+        super(ContrastiveNormalizedDistanceLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, input, target):
+        """target:
+            0: other class - distance to class should increase
+            1: same class - distance within class should decrease"""
+        upper_triangle = torch.triu(
+            torch.ones((len(input), len(input)), dtype=torch.uint8),
+            diagonal=1)
+        distances = (-2 * input.mm(torch.t(input)) + \
+                     input.pow(2).sum(dim=1).view(1, -1) + \
+                     input.pow(2).sum(dim=1).view(-1, 1))[upper_triangle]
+
+        # target matrix:
+        # 1: decrease distance --> set target_mat = 1
+        # 2: increase distance --> set target_mat = 0
+        # 4: do nothing --> ignore distances
+        target[target == 0] = 2
+        target_mat = torch.matmul(target.view(-1, 1), target.view(1, -1))[upper_triangle]
+        distances = distances[target_mat != 4]
+        target_mat = target_mat[target_mat != 4]
+        target_mat[target_mat == 2] = 0
+
+        # contraction_loss = torch.sum(target_mat.type_as(distances) * distances) / (target_mat == 1).sum().type_as(distances)
+        # repulsion_loss = torch.sum((1-target_mat).type_as(distances) * torch.clamp(torch.pow(self.margin - torch.sqrt(distances), 2), min=0.0)) / (target_mat == 0).sum().type_as(distances)
+        # loss = 0.5 * contraction_loss + 0.5 * repulsion_loss
+        loss = torch.mean(target_mat.type_as(distances) * distances +
+                          (1-target_mat).type_as(distances) * torch.pow(
+                              torch.clamp(self.margin.type_as(distances) - torch.sqrt(distances), min=0.0), 2))
+        return loss
+
+
+class SoftNormLoss(nn.Module):
+    def __init__(self, norm_value, margin):
+        super(SoftNormLoss, self).__init__()
+        self.value = norm_value
+        self.margin = margin
+
+    def forward(self, norm):
+        diff = torch.abs(self.value.type_as(norm) - norm)
+        loss = torch.clamp(diff - self.margin.type_as(norm), min=0.0)
+        return loss
 
 
 def train(net, feature, image_id, old_embedding, target_embedding,
@@ -387,18 +554,32 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         net = net.cuda()
     net.train()
 
+    # Set up differend groups of indices
+    # each sample belongs to one group exactly, hierarchy is as follows:
+    # 1: samples moved by user in this cycle
+    # 2: new neighborhood
+    # 3: samples moved by user in previous cycles
+    # 4: old neighborhood
+    # 4: high dimensional neighborhood of moved samples
+    # 5: fix points / unrelated (remaining) samples
+
     # find high dimensional neighbors
-    idx_high_dim_neighbors = mutual_k_nearest_neighbors(feature, idx_modified,
-                                                        k=100)  # use the first 100 nn of modified samples
+    idx_high_dim_neighbors = mutual_k_nearest_neighbors(feature, np.union1d(idx_modified, idx_new_neighbors),
+                                                        k=200)  # use the first 100 nn of modified samples
 
     # ensure there is no overlap between different index groups
-    previously_modified = np.setdiff1d(previously_modified, idx_modified)           # if sample was modified again, allow change
-    neighbors = np.unique(np.concatenate([idx_old_neighbors, idx_new_neighbors, idx_high_dim_neighbors]))
-    neighbors = np.setdiff1d(neighbors, previously_modified)
-    space_samples = np.setdiff1d(range(N), np.concatenate([idx_modified, neighbors, previously_modified]))
+    idx_new_neighbors = np.setdiff1d(idx_new_neighbors, idx_modified)
+    idx_previously_modified = np.setdiff1d(previously_modified, np.concatenate([idx_modified, idx_new_neighbors]))
+    idx_old_neighbors = np.setdiff1d(np.concatenate([idx_old_neighbors, idx_high_dim_neighbors]),
+                                     np.concatenate([idx_modified, idx_new_neighbors, idx_previously_modified]))
+    idx_fix_points = np.setdiff1d(range(N),
+                                  np.concatenate([idx_modified, idx_new_neighbors,
+                                                  idx_previously_modified, idx_old_neighbors]))
 
-    for i, g1 in enumerate([idx_modified, previously_modified, neighbors, space_samples]):
-        for j, g2 in enumerate([idx_modified, previously_modified, neighbors, space_samples]):
+    for i, g1 in enumerate([idx_modified, idx_new_neighbors, idx_previously_modified,
+                            idx_old_neighbors, idx_fix_points]):
+        for j, g2 in enumerate([idx_modified, idx_new_neighbors, idx_previously_modified,
+                                idx_old_neighbors, idx_fix_points]):
             if i != j and len(np.intersect1d(g1, g2)) != 0:
                 print('groups: {}, {}'.format(i, j))
                 print(np.intersect1d(g1, g2))
@@ -406,18 +587,20 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
     print('Group Overview:'
           '\n\tModified samples: {}'
+          '\n\tNew neighbors: {}'
           '\n\tPreviously modified samples: {}'
-          '\n\tNeighbors samples: {}'
-          '\n\tSpace samples: {}'.format(
-        len(idx_modified), len(previously_modified), len(neighbors), len(space_samples)
-    ))
+          '\n\tOld neighbors: {}'
+          '\n\tFix points: {}'.format(
+        len(idx_modified), len(idx_new_neighbors), len(idx_previously_modified),
+        len(idx_old_neighbors), len(idx_fix_points)))
+
     # modify label
     label[idx_modified, -1] = 'modified'
-    label[previously_modified, -1] = 'prev_modified'
-    label[neighbors, -1] = 'neighbors'
-    label[idx_high_dim_neighbors, -1] = 'high_dim_neighbors'
-    label[space_samples, -1] = 'other'
-
+    label[idx_previously_modified, -1] = 'prev_modified'
+    label[idx_new_neighbors, -1] = 'new neighbors'
+    label[idx_old_neighbors, -1] = 'old neighbors'
+    label[idx_high_dim_neighbors, -1] = 'high dim neighbors'
+    label[idx_fix_points, -1] = 'other'
 
     optimizer = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, threshold=1e-3,
@@ -425,50 +608,60 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
     kl_criterion = TSNELoss(N, use_cuda=use_cuda)
     l2_criterion = torch.nn.MSELoss(reduction='none')                  # keep the output fixed
+    noise_criterion = NormalizedMSE()
 
     # define the index samplers for data
-    #   sample_sampler: modified samples and previously modified samples
-    #   neighbor_sampler: high-dimensional and previous and new neighbors (these will be shown more often in training process)
-    #   space_sampler: remaining samples (neither modified nor neighbors, only show them once)
 
-    batch_size = 1000
+    batch_size = 500
+    max_len = max(len(idx_modified) + len(idx_previously_modified), len(idx_new_neighbors),
+                  len(idx_old_neighbors), len(idx_fix_points))
+    if max_len == len(idx_fix_points):
+        n_batches = max_len / (batch_size * 2) + 1
+    else:
+        n_batches = max_len / batch_size + 1
 
-    max_len = max(len(idx_modified) + len(previously_modified), len(neighbors), len(space_samples))
-
-    n = len(idx_modified) + len(previously_modified)
-    print('{} modified'.format(n))
-    n_repeat = 1 if (n == max_len or n == 0) else max_len / n + 1
-    sample_sampler = torch.utils.data.BatchSampler(
-        sampler=torch.utils.data.SubsetRandomSampler((list(idx_modified) + list(previously_modified)) * n_repeat),
+    sampler_modified = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_modified),
         batch_size=batch_size, drop_last=False)
 
-    n = len(neighbors)
-    print('{} neighbors'.format(n))
-    n_repeat = 1 if (n == max_len or n == 0) else max_len / n + 1
-    neighbor_sampler = torch.utils.data.BatchSampler(
-        sampler=torch.utils.data.SubsetRandomSampler(list(neighbors) * n_repeat),
+    sampler_new_neighbors = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_new_neighbors),
         batch_size=batch_size, drop_last=False)
 
-    n = len(space_samples)
-    print('{} space samples'.format(n))
-    n_repeat = 1 if (n == max_len or n == 0) else max_len / n + 1
-    space_sampler = torch.utils.data.BatchSampler(
-        sampler=torch.utils.data.SubsetRandomSampler(list(space_samples) * n_repeat),
+    sampler_prev_modified = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_previously_modified),
         batch_size=batch_size, drop_last=False)
 
-    print('max_length loader: {}, ({}) ({}) ({})'
-          .format(max_len / batch_size + 1, len(sample_sampler), len(neighbor_sampler), len(space_sampler)))
+    sampler_old_neighbors = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_old_neighbors),
+        batch_size=batch_size, drop_last=False)
+
+    sampler_fixed = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_fix_points),
+        batch_size=2 * batch_size, drop_last=False)
+
 
     # train network until scheduler reduces learning rate to threshold value
-    track_l2_loss = ChangeRateLogger(n_track=5, threshold=5e-2)
+    lr_threshold = 1e-5
+    track_l2_loss = ChangeRateLogger(n_track=5, threshold=5e-2, order='smaller')
+    track_noise_reg = ChangeRateLogger(n_track=10, threshold=-1, order='smaller')          # only consider order --> negative threshold
     stop_criterion = False
 
     embeddings = {}
     model_states = {}
+    cpu_net = copy.deepcopy(net).cpu() if use_cuda else net
+    model_states[0] = {
+        'epoch': 0,
+        'loss': float('inf'),
+        'state_dict': cpu_net.state_dict().copy(),
+        'optimizer': optimizer.state_dict().copy(),
+        'scheduler': scheduler.state_dict().copy()
+    }
+    embeddings[0] = old_embedding.numpy().copy()
+
     epoch = 1
     new_features = feature.copy()
     new_embedding = old_embedding.numpy().copy()
-
 
     t_beta = []
     t_train = []
@@ -478,7 +671,24 @@ def train(net, feature, image_id, old_embedding, target_embedding,
     t_iter = []
 
     tensor_feature = torch.from_numpy(feature)
+    norms = torch.norm(tensor_feature, p=2, dim=1)
+    feature_norm = torch.mean(norms)
+    norm_margin = norms.std()
+    norm_criterion = SoftNormLoss(norm_value=feature_norm, margin=norm_margin)
+    # distance_criterion = NormalizedDistanceLoss()
+    # distance_criterion = ContrastiveNormalizedDistanceLoss(margin=0.2 * feature_norm)
+    triplet_margin = 0.2 * feature_norm
+    triplet_selector = BinaryTripletSelector(selection_positives='hardest', selection_negatives='random',
+                                             n_per_anchor=19, buffer=100, multiplier_negatives=3)
+    distance_criterion = TripletLoss(margin=triplet_margin, triplet_selector=triplet_selector)
+
+    del norms
     while not stop_criterion:
+        # if epoch < 30:           # do not use dropout at first
+        #     net.eval()
+        # else:
+        net.train()
+
         t_iter_start = time.time()
 
         # compute beta for kl loss
@@ -490,6 +700,11 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         # set up losses
         l2_losses = AverageMeter()
         kl_losses = AverageMeter()
+        distance_losses = AverageMeter()
+        noise_regularization = AverageMeter()
+        feature_norm = AverageMeter()
+        norm_losses = AverageMeter()
+        weight_regularization = AverageMeter()
         losses = AverageMeter()
 
         t_load = []
@@ -502,12 +717,32 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         # iterate over fix points (assume N_fixpoints >> N_modified)
         t_train_start = time.time()
         t_load_start = time.time()
-        loaders = zip(list(space_sampler), list(sample_sampler), list(neighbor_sampler))
-        for batch_idx, (space_indices, sample_indices, neighbor_indices) in enumerate(loaders):
+        batch_loaders = []
+        for smplr in [sampler_modified, sampler_new_neighbors, sampler_prev_modified,
+                      sampler_old_neighbors, sampler_fixed]:
+            batches = list(smplr)
+            if len(batches) == 0:
+                batches = [[] for i in range(n_batches)]
+            while len(batches) < n_batches:
+                to = min(n_batches - len(batches), len(batches))
+                batches.extend(list(smplr)[:to])
+            batch_loaders.append(batches)
+
+        for batch_idx in range(n_batches):
             t_tot_start = time.time()
 
+            moved_indices = batch_loaders[0][batch_idx]
+            new_neigh_indices = batch_loaders[1][batch_idx]
+            prev_moved_indices = batch_loaders[2][batch_idx]
+            old_neigh_indices = batch_loaders[3][batch_idx]
+            fixed_indices = batch_loaders[4][batch_idx]
+            n_moved, n_new, n_prev, n_old, n_fixed = (len(moved_indices), len(new_neigh_indices),
+                                                      len(prev_moved_indices),
+                                                      len(old_neigh_indices), len(fixed_indices))
+
             # load data
-            indices = np.concatenate([space_indices, sample_indices, neighbor_indices])
+            indices = np.concatenate([new_neigh_indices, moved_indices, prev_moved_indices,
+                                      fixed_indices, old_neigh_indices]).astype(long)
             if len(indices) < 3 * kl_criterion.perplexity + 2:
                 continue
             data = tensor_feature[indices]
@@ -520,33 +755,76 @@ def train(net, feature, image_id, old_embedding, target_embedding,
             t_forward_start = time.time()
 
             fts_mod = net.mapping(input)
+            # fts_mod_noise = net.mapping(input + 0.1 * torch.rand(input.shape).type_as(input))
+            fts_mod_noise = net.mapping(input + torch.rand(input.shape).type_as(input))
             emb_mod = net.embedder(torch.nn.functional.relu(fts_mod))
 
             t_forward_end = time.time()
             t_forward.append(t_forward_end - t_forward_start)
 
             # compute losses
+            # modified --> KL, L2, Dist
+            # new neighborhood --> KL, Dist
+            # previously modified --> KL, L2
+            # old neighborhood + high dimensional neighborhood --> KL
+            # fix point samples --> KL, L2
 
             t_loss_start = time.time()
 
-            kl_loss = kl_criterion(fts_mod, emb_mod, indices)
+            noise_reg = noise_criterion(fts_mod, fts_mod_noise)
+            noise_regularization.update(noise_reg.data, len(data))
 
+            kl_loss = kl_criterion(fts_mod, emb_mod, indices)
             kl_losses.update(kl_loss.data, len(data))
 
-            idx_l2_fixed = np.concatenate([space_indices, sample_indices])
+            # TODO: L2 LOSS ALSO ON NEW NEIGHBORS!
+            idx_l2_fixed = np.concatenate([moved_indices, prev_moved_indices, fixed_indices]).astype(long)
             l2_loss = torch.mean(
-                l2_criterion(emb_mod[:len(idx_l2_fixed)], target_embedding[idx_l2_fixed].type_as(emb_mod)),
+                l2_criterion(emb_mod[n_new:n_new + n_moved + n_prev + n_fixed],
+                             target_embedding[idx_l2_fixed].type_as(emb_mod)),
                 dim=1)
-            # weight loss of space samples equally to all modified samples
-            l2_loss = 0.5 * torch.mean(l2_loss[:len(space_indices)]) + 0.5 * torch.mean(l2_loss[len(space_indices):])
+            # weigh loss of space samples equally to all modified samples
+            l2_loss = 0.5 * torch.mean(l2_loss[: n_moved + n_prev]) + \
+                      0.5 * torch.mean(l2_loss[n_moved + n_prev:])
 
             l2_losses.update(l2_loss.data, len(idx_l2_fixed))
 
-            loss = 0.6 * l2_loss + 0.4 * kl_loss.type_as(l2_loss)
+            if epoch < 0:
+                distance_loss = torch.tensor(0.)
+            else:
+                # distance_loss = distance_criterion(fts_mod[:n_new + n_moved])
+                distance_loss_input = fts_mod[:-n_old] if n_old > 0 else fts_mod
+                distance_loss_target = torch.cat([torch.ones(n_new + n_moved), torch.zeros(n_prev + n_fixed)])
+                distance_loss_weights = None
+                # also use high dimensional nn
+                high_dim_nn = np.where(np.isin(indices, idx_high_dim_neighbors))[0]
+                if len(high_dim_nn) > 0:
+                    distance_loss_input = torch.cat([distance_loss_input, fts_mod[high_dim_nn]])
+                    distance_loss_target = torch.cat([distance_loss_target, torch.ones(len(high_dim_nn))])
+                    distance_loss_weights = torch.cat([torch.ones(n_new+n_moved+n_prev+n_fixed), 0.5*torch.ones(len(high_dim_nn))])
+                distance_loss, _ = distance_criterion(distance_loss_input, distance_loss_target, concealed_classes=[0], weights=distance_loss_weights)
+                distance_loss_noise, _ = distance_criterion(distance_loss_input + torch.rand(distance_loss_input.shape).type_as(distance_loss_input), distance_loss_target, concealed_classes=[0])
+                distance_loss = 0.5 * distance_loss + 0.5 * distance_loss_noise
+
+            distance_losses.update(distance_loss.data, n_new + n_moved)
+
+            norm_loss = norm_criterion(torch.mean(fts_mod.norm(p=2, dim=1)))
+            norm_losses.update(norm_loss.data, len(data))
+
+            weight_reg = torch.autograd.Variable(torch.tensor(0.)).type_as(l2_loss)
+            for param in net.mapping.parameters():
+                weight_reg += param.norm(1)
+            weight_regularization.update(weight_reg, len(data))
+
+            loss = l2_loss + 10 * kl_loss.type_as(l2_loss) + 0.8 * distance_loss.type_as(l2_loss) + \
+                   1e-4 * weight_reg.type_as(l2_loss)#+ norm_loss.type_as(l2_loss)\ 1e3 * noise_reg.type_as(l2_loss)
             losses.update(loss.data, len(data))
 
             t_loss_end = time.time()
             t_loss.append(t_loss_end - t_loss_start)
+
+            feature_norm.update(torch.mean(fts_mod.norm(p=2, dim=1)).data, len(data))
+
             # backprop
 
             t_backprop_start = time.time()
@@ -598,19 +876,26 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         t_tensorboard_start = time.time()
         scheduler.step(losses.avg)
         log.write('l2_loss', float(l2_losses.avg), epoch, test=False)
+        log.write('distance_loss', float(distance_losses.avg), epoch, test=False)
         log.write('kl_loss', float(kl_losses.avg), epoch, test=False)
+        log.write('noise_regularization', float(noise_regularization.avg), epoch, test=False)
+        log.write('feature_norm', float(feature_norm.avg), epoch, test=False)
+        log.write('norm_loss', float(norm_losses.avg), epoch, test=False)
+        log.write('weight_reg', float(weight_regularization.avg), epoch, test=False)
         log.write('loss', float(losses.avg), epoch, test=False)
         t_tensorboard_end = time.time()
         t_tensorboard.append(t_tensorboard_end - t_tensorboard_start)
 
         t_save_start = time.time()
 
+        cpu_net = copy.deepcopy(net).cpu() if use_cuda else net
+
         model_states[epoch] = {
             'epoch': epoch,
-            'loss': losses.avg,
-            'state_dict': net.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict()
+            'loss': losses.avg.cpu(),
+            'state_dict': cpu_net.state_dict().copy(),
+            'optimizer': optimizer.state_dict().copy(),
+            'scheduler': scheduler.state_dict().copy()
         }
         embeddings[epoch] = new_embedding
 
@@ -620,12 +905,18 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         print('Train Epoch: {}\t'
               'Loss: {:.4f}\t'
               'L2 Loss: {:.4f}\t'
+              'Distance Loss: {:.4f}\t'
               'KL Loss: {:.4f}\t'
+              'Noise Regularization: {:.4f}\t'
+              'Weight Regularization: {:.4f}\t'
               'LR: {:.6f}'.format(
             epoch,
             float(losses.avg),
             float(l2_losses.avg),
+            float(distance_losses.avg),
             float(kl_losses.avg),
+            float(noise_regularization.avg),
+            float(1e-4 * weight_regularization.avg),
             optimizer.param_groups[-1]['lr']))
 
         t_send_start = time.time()
@@ -640,7 +931,11 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         t_send.append(t_send_end - t_send_start)
 
         epoch += 1
-        stop_criterion = track_l2_loss.add_value(l2_losses.avg)
+        l2_stop_criterion = track_l2_loss.add_value(l2_losses.avg)
+        epoch_stop_criterion = epoch > 150
+        regularization_stop_criterion = False#track_noise_reg.add_value(noise_regularization.avg)
+        lr_stop_criterion = optimizer.param_groups[-1]['lr'] < lr_threshold
+        stop_criterion = any([l2_stop_criterion, regularization_stop_criterion, lr_stop_criterion, epoch_stop_criterion])
 
         t_iter_end = time.time()
         t_iter.append(t_iter_end - t_iter_start)
@@ -674,7 +969,7 @@ def train(net, feature, image_id, old_embedding, target_embedding,
     # compute new features
     new_features = get_feature(net.mapping, feature)
 
-    print('Save output files...')
+    # print('Save output files...')
     # write output files for the cycle
     outfile_config = os.path.join(outpath_config, 'cycle_{:03d}_config.pkl'.format(cycle))
     outfile_embedding = os.path.join(outpath_embedding, 'cycle_{:03d}_embeddings.hdf5'.format(cycle))
@@ -686,25 +981,30 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         for epoch in embeddings.keys():
             data = embeddings[epoch]
             f.create_dataset(name='epoch_{:04d}'.format(epoch), shape=data.shape, dtype=data.dtype, data=data)
+    print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_embedding)))
 
     with h5py.File(outfile_feature, 'w') as f:
         f.create_dataset(name='feature', shape=new_features.shape, dtype=new_features.dtype, data=new_features)
         f.create_dataset(name='image_id', shape=image_id.shape, dtype=image_id.dtype, data=image_id)
+    print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_feature)))
 
     torch.save(model_states, outfile_model_states)
+    print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_model_states)))
 
     # write config file
     config_dict = {'idx_modified': idx_modified, 'idx_old_neighbors': idx_old_neighbors,
                    'idx_new_neighbors': idx_new_neighbors, 'idx_high_dim_neighbors': idx_high_dim_neighbors}
     with open(outfile_config, 'w') as f:
         pickle.dump(config_dict, f)
+    print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_config)))
+
     print('Done.')
 
     print('Finished training.')
     return new_embedding
 
 
-def reset(experiment_id=None):
+def reset(experiment_id=None, dataset='wikiart'):
     global cycle, previously_modified
     cycle = 0
     previously_modified = np.array([], dtype=np.long)
@@ -713,10 +1013,21 @@ def reset(experiment_id=None):
 
     if experiment_id is not None:
         exp_name = experiment_id + '_' + exp_name
+    if dataset == 'shape':
+        exp_name = 'ShapeDataset_' + exp_name
+    elif dataset == 'office':
+        exp_name = 'OfficeDataset_' + exp_name
+    elif dataset == 'bam':
+        exp_name = 'BAMDataset_' + exp_name
     if os.path.isdir(os.path.join('runs/mapping', exp_name)):
-        shutil.rmtree(os.path.join('runs/mapping', exp_name))
-
-
+        shutil.rmtree(os.path.join('runs/mapping', exp_name), ignore_errors=True)
+        print('Reset log directory.')
+    if os.path.isdir(os.path.join('runs/mapping/tensorboard', exp_name)):
+        shutil.rmtree(os.path.join('runs/mapping/tensorboard', exp_name), ignore_errors=True)
+        print('Reset tensorboard log directory.')
+    if os.path.isdir(os.path.join('runs/embedder/tensorboard', exp_name + '_embedder')):
+        shutil.rmtree(os.path.join('runs/embedder/tensorboard', exp_name + '_embedder'), ignore_errors=True)
+        print('Reset tensorboard log directory for embedder.')
 
 if __name__ == '__main__':
     pass

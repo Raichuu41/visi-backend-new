@@ -32,6 +32,8 @@ parser.add_argument('--stat_file', default='wikiart_datasets/info_artist_49_mult
 parser.add_argument('--im_path', default='/export/home/kschwarz/Documents/Data/Wikiart_artist49_images', type=str,
                     help='Path to Wikiart images')
 parser.add_argument('--shape_dataset', default=False, action='store_true', help='Use artificial shape dataset')
+parser.add_argument('--office_dataset', default=False, action='store_true', help='Use office dataset')
+parser.add_argument('--bam_dataset', default=False, action='store_true', help='Use bam dataset')
 
 parser.add_argument('--batch_size', default=64, type=int, help='Batch size".')
 
@@ -66,7 +68,7 @@ def main():
                               classes=classes, transform=img_transform)
     else:
         dataset = Wikiart(path_to_info_file=args.info_file, path_to_images=args.im_path,
-                          classes=['artist_name'], transform=img_transform)
+                          classes=['image_id'], transform=img_transform)
 
     # PARAMETERS
     use_cuda = args.use_gpu and torch.cuda.is_available()
@@ -122,6 +124,12 @@ def main():
     expname = '' if args.exp_name is None else '_' + args.exp_name
     if args.shape_dataset:
         outfile = os.path.join(args.output_dir, 'ShapeDataset_' + str(net).split('(')[0] + '_' +
+                               args.info_file.split('/')[-1].split('.')[0] + expname + '.hdf5')
+    elif args.office_dataset:
+        outfile = os.path.join(args.output_dir, 'OfficeDataset_' + str(net).split('(')[0] + '_' +
+                               args.info_file.split('/')[-1].split('.')[0] + expname + '.hdf5')
+    elif args.bam_dataset:
+        outfile = os.path.join(args.output_dir, 'BAMDataset_' + str(net).split('(')[0] + '_' +
                                args.info_file.split('/')[-1].split('.')[0] + expname + '.hdf5')
     else:
         outfile = os.path.join(args.output_dir, str(net).split('(')[0] + '_' +

@@ -6,7 +6,7 @@ import buildLabels from '../../util/buildLabels';
 
 const router = Router();
 
-router.post('/updateLabels', async (req, res) => {
+router.post('/updateLabels', async (req, res, next) => {
     console.log('updateLabels');
     const nodes = compareAndClean({}, req.body.nodes);
     console.log(nodes);
@@ -29,6 +29,7 @@ router.post('/updateLabels', async (req, res) => {
         } catch (err) {
             console.error('error - updateLabels python error');
             console.error(err);
+            next(err);
         }
     }
 });
@@ -55,19 +56,13 @@ router.post('/updateEmbedding', async (req, res, next) => {
 
 router.post('/startUpdateEmbedding', async (req, res, next) => {
     console.log('POST /startUpdateEmbedding');
-    console.log(`origin: ${req.origin}`);
-    console.log(`header.origin: ${req.headers.origin}`);
-    console.log(`socket.remoteAddress: ${req.socket.remoteAddress}`);
-    console.log(`host: ${req.host}`);
-    console.log(`hostname: ${req.hostname}`);
-    console.log(`ip: ${req.ip}`);
-    console.log(`ips: ${req.ips}`);
     const { body } = req;
-    //console.log({ body });
+    // console.log({ body });
     const { socketId, nodes } = body;
     console.log({ socketId });
     // console.log(app)
     if (!socketId) return next(new Error('No Client ID delivered'));
+    res.send();
 
     try {
         const time = process.hrtime();
@@ -78,14 +73,13 @@ router.post('/startUpdateEmbedding', async (req, res, next) => {
         }).then(response => response.text());
         const diff = process.hrtime(time);
         // console.log(data);
-        res.send(data);
+        // res.send(data);
         console.log(`startUpdateEmbedding from python took ${diff[0] + diff[1] / 1e9} seconds`);
     } catch (err) {
         console.error('error - startUpdateEmbedding python error');
         console.error(err);
+        next(err);
     }
-
-    res.send();
 });
 
 router.post('/stopUpdateEmbedding', async (req, res, next) => {
@@ -111,8 +105,38 @@ router.post('/stopUpdateEmbedding', async (req, res, next) => {
     } catch (err) {
         console.error('error - stopUpdateEmbedding python error');
         console.error(err);
+        next(err);
     }
-
-    res.send();
 });
+
+router.post('/getGroupNeighbours', async (req, res, next) => {
+    console.log('POST /getGroupNeighbours');
+    const { body } = req;
+    console.log({ body });
+    const { neighbours, group } = body;
+    console.log({ neighbours, group });
+    // console.log(app)
+
+    if (process.env.NODE_ENV === 'development') {
+        res.status = 200;
+        res.send({ group: [1, 4, 5], neighbours: { 3: 0.2, 5: 0.5, 10: 0.1, 12: 0.01} });
+    } else {
+        try {
+            const time = process.hrtime();
+            const data = await fetch(`http://${pythonApi}:8000/getGroupNeighbours`, {
+                method: 'POST',
+                header: { 'Content-type': 'application/json' },
+                body: JSON.stringify(body),
+            }).then(response => response.text());
+            const diff = process.hrtime(time);
+            res.send(data);
+            console.log(`getGroupNeighbours from python took ${diff[0] + diff[1] / 1e9} seconds`);
+        } catch (err) {
+            console.error('error - getGroupNeighbours python error');
+            console.error(err);
+            next(err);
+        }
+    }
+});
+
 export default router;

@@ -21,15 +21,17 @@ const resizePics = async (imgPath, imgSizes, nodes = []) => {
             if (err) return new Error(err);
 
             // map through files
-            await Promise.all(files.map((file) => {
+            await Promise.all(files.map((file, i) => {
                 // check if file is a folder (10, 20, ...)
                 if (!Number.isNaN(+file)) return null;
+
                 const path = `${imgPath}${file}`;
-                console.log(path)
+                // if file exists return
                 const pic = sharp(path);
                 // map through image sizes
                 return imgSizes.map((size) => {
                     const outPath = `${imgPath}${size}/${file.split('.')[0]}.png`;
+                    if(fs.existsSync(outPath)) return null
                     return pic.resize(size, size)
                         .max()
                         .overlayWith(
@@ -37,7 +39,9 @@ const resizePics = async (imgPath, imgSizes, nodes = []) => {
                             { tile: true, raw: { width: 1, height: 1, channels: 4 } },
                         )
                         .toFile(outPath)
-                        .then(_ => console.log('saved: ' + outPath))
+                        .then(_ => {
+                            if(i && !(i % 100)) console.log('saved: '+ i +' - ' + outPath )
+                        })
                         .catch((e) => {
                             console.error(e);
                             console.log({ file, path, outPath });
@@ -72,9 +76,7 @@ const resizePics = async (imgPath, imgSizes, nodes = []) => {
 
 export default resizePics;
 
-//const path = `/export/home/kschwarz/Documents/Data/Wikiart_artist49_images/`;
-const path = `/export/home/kschwarz/Documents/Data/Geometric_Shapes/images/`;
-console.log(path)
-const sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]
-
+const path = 'C:/Users/libor/bachelor-node/images/2582_sub_wikiarts/';
+console.log(path);
+const sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150];
 resizePics(path, sizes);

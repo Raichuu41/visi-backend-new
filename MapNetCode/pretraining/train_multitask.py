@@ -12,6 +12,10 @@ import time
 import shutil
 import torch.backends.cudnn as cudnn
 
+if not os.getcwd().endswith('MapNetCode/pretraining/'):
+    os.chdir('/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/pretraining/')
+sys.path.append('./')
+
 from dataset import Wikiart
 from model import mobilenet_v2, vgg16_bn, narrownet, OctopusNet
 
@@ -44,6 +48,7 @@ parser.add_argument('--task_selection', default=None, type=str, help='Task (cate
 # model
 parser.add_argument('--model', type=str, help='Choose from: mobilenet_v2, vgg16_bn')
 parser.add_argument('--not_narrow', default=False, action='store_true', help='Do not narrow feature down to 128 dim.')
+parser.add_argument('--feature_dim', type=int, default=128, help='Dimensionality of features before classification.')
 parser.add_argument('--chkpt', default=None, type=str, help='Checkpoint file to resume from.')
 
 # training parameters
@@ -63,8 +68,15 @@ parser.add_argument('--seed', default=123, type=int, help='Random state.')
 
 # sys.argv = []
 args = parser.parse_args()
-# args.model = 'mobilenet_v2'
-# args.device = 0
+# args.val_file = 'wikiart_datasets/info_elgammal_subset_val.hdf5'
+# args.train_file = 'wikiart_datasets/info_elgammal_subset_train.hdf5'
+# args.im_path = '/export/home/asanakoy/workspace/wikiart/images'
+# args.stat_file = 'wikiart_datasets/info_elgammal_subset_train_mean_std.pkl'
+# args.task_selection = 'genre,artist_name'
+# args.model = 'vgg16_bn'
+# args.device = 1
+# args.lr = 1e-3
+# args.exp_name = 'TEST'
 
 
 def main():
@@ -141,7 +153,7 @@ def main():
     if args.not_narrow:
         bodynet = featurenet
     else:
-        bodynet = narrownet(featurenet)
+        bodynet = narrownet(featurenet, dim_feature_out=args.feature_dim)
     net = OctopusNet(bodynet, n_labels=num_labels)
     n_parameters = sum([p.data.nelement() for p in net.parameters() if p.requires_grad])
     if use_cuda:
@@ -177,7 +189,7 @@ def main():
     if use_cuda:
         criterion = criterion.cuda()
 
-    kwargs = {'num_workers': 8} if use_cuda else {}
+    kwargs = {'num_workers': 8, 'pin_memory': True} if use_cuda else {}
     trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, **kwargs)
     valloader = DataLoader(valset, batch_size=args.batch_size, shuffle=True, **kwargs)
 
@@ -219,6 +231,8 @@ def main():
             for i, o, t, p in zip(range(len(classes)), outputs, target, preds):
                 # in case of None labels
                 mask = t != -1
+                if mask.sum() == 0:
+                    continue
                 o, t, p = o[mask], t[mask], p[mask]
                 loss += criterion(o, t)
                 # measure class accuracy and record loss
@@ -266,6 +280,11 @@ def main():
 
             loss = Variable(torch.Tensor([0])).type_as(data[0])
             for i, o, t, p in zip(range(len(classes)), outputs, target, preds):
+                # in case of None labels
+                mask = t != -1
+                if mask.sum() == 0:
+                    continue
+                o, t, p = o[mask], t[mask], p[mask]
                 loss += criterion(o, t)
                 # measure class accuracy and record loss
                 class_acc[i].update((torch.sum(p == t).type(torch.FloatTensor) / t.size(0)).data)
@@ -329,8 +348,12 @@ def main():
           .format(best['epoch'], best['best_acc_score'], best['acc'], best['class_acc']))
     print('Best model mean accuracy: {}'.format(best_acc))
 
-    shutil.copyfile(os.path.join(log_dir, expname + '_model_best.pth.tar'),
-                    os.path.join('models', expname + '_model_best.pth.tar'))
+    try:
+        shutil.copyfile(os.path.join(log_dir, expname + '_model_best.pth.tar'),
+                        os.path.join('models', expname + '_model_best.pth.tar'))
+    except IOError:  # could be only one task
+        shutil.copyfile(os.path.join(log_dir, expname + '_model_best_mean_acc.pth.tar'),
+                        os.path.join('models', expname + '_model_best.pth.tar'))
 
 if __name__ == '__main__':
     main()

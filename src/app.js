@@ -22,7 +22,7 @@ import buildLabels from "./util/buildLabels";
 const express = require('express');
 const fs = require('fs');
 
-//const kde2d = require('@stdlib/stdlib/lib/node_modules/@stdlib/stats/kde2d');
+const kde2d = require('@stdlib/stdlib/lib/node_modules/@stdlib/stats/kde2d');
 
 const mockDataLength = 50; // Object.keys(exampleNodes).length;
 
@@ -73,6 +73,7 @@ if (process.env.NODE_ENV === 'development') {
     imgPath = '/export/home/kschwarz/Documents/Data/Wikiart_artist49_images/';
 //    imgPath = '/export/home/kschwarz/Documents/Data/Geometric_Shapes/images/';
 //    imgPath = '/export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/';
+//    imgPath = '/export/home/kschwarz/Documents/Data/BAM/';
 }
 
 if (process.env.NODE_ENV === 'development') {
@@ -142,6 +143,7 @@ app.use(morgan('dev'));
 
 // console.log(process.env.NODE_ENV === 'development')
 
+app.use('/', express.static('public'));
 
 // app.use('/api/v1/users', users)
 // TODO add python in route name and change frontend usage
@@ -149,7 +151,6 @@ app.use('/api/v1/', pythonRoute);
 app.use('/api/v1/svm/', svmRoute);
 app.use('/api/v1/dataset/', dataset);
 app.use('/api', express.static('images'));
-app.use('/', express.static('public'));
 /* app.get('/images/!*', (req, res) => {
     console.log(req.path)
     res.send()

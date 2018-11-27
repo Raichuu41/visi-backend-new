@@ -8,7 +8,7 @@ from torch.autograd import Variable
 import h5py
 
 from dataset import Wikiart
-from model import mobilenet_v2, vgg16_bn, narrownet, remove_fc
+from model import mobilenet_v2, vgg16_bn, narrownet, remove_fc, make_featurenet
 
 sys.path.append('/export/home/kschwarz/Documents/Masters/FullPipeline')
 import matplotlib as mpl
@@ -18,11 +18,15 @@ from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, load_wei
 sys.path.append('/export/home/kschwarz/Documents/Data/Geometric_Shapes')
 from shape_dataset import ShapeDataset
 
+sys.path.append('/export/home/kschwarz/Documents/Data/STL')
+from stl_dataset import STL
+
 
 parser = argparse.ArgumentParser(description='Extract features from wikiart dataset.')
 parser.add_argument('--exp_name', type=str, help='Name appended to generated output file name.')
 parser.add_argument('--model', type=str, help='Choose from "mobilenet_v2", or "vgg16_bn".')
-parser.add_argument('--not_narrow', default=False, action='store_true', help='Do not narrow feature down to 128 dim.')
+parser.add_argument('--not_narrow', default=False, action='store_true', help='Do not narrow feature down '
+                                                                             '(see also argument feature_dim).')
 parser.add_argument('--weight_file', type=str, help='File to load pretrained weights from.')
 parser.add_argument('--output_dir', default='../features', type=str, help='Directory to which features are saved.')
 
@@ -34,8 +38,10 @@ parser.add_argument('--im_path', default='/export/home/kschwarz/Documents/Data/W
 parser.add_argument('--shape_dataset', default=False, action='store_true', help='Use artificial shape dataset')
 parser.add_argument('--office_dataset', default=False, action='store_true', help='Use office dataset')
 parser.add_argument('--bam_dataset', default=False, action='store_true', help='Use bam dataset')
+parser.add_argument('--stl_dataset', default=False, action='store_true', help='Use STL dataset')
 
 parser.add_argument('--batch_size', default=64, type=int, help='Batch size".')
+parser.add_argument('--feature_dim', type=int, default=128, help='Dimensionality of extracted features.')
 
 parser.add_argument('--use_gpu', default=True, type=bool, help='Use gpu or not.')
 parser.add_argument('--device', default=0, type=int, help='Number of gpu device to use.')
@@ -66,6 +72,8 @@ def main():
         classes = ['shape']
         dataset = ShapeDataset(root_dir='/export/home/kschwarz/Documents/Data/Geometric_Shapes', split=args.info_file,
                               classes=classes, transform=img_transform)
+    elif args.stl_dataset:
+        dataset = STL(transform=img_transform, test='test' in args.info_file.split('/')[-1])
     else:
         dataset = Wikiart(path_to_info_file=args.info_file, path_to_images=args.im_path,
                           classes=['image_id'], transform=img_transform)
@@ -87,11 +95,14 @@ def main():
     if args.not_narrow:
         net = featurenet
     else:
-        net = narrownet(featurenet)
+        net = narrownet(featurenet, dim_feature_out=args.feature_dim)
     if use_cuda:
         net = net.cuda()
 
-    remove_fc(net, inplace=True)
+    if args.weight_file is not None:
+        remove_fc(net, inplace=True)
+    else:
+        make_featurenet(net, inplace=True)
     print('Extract features using {}.'.format(str(net)))
 
     if args.weight_file:
@@ -130,6 +141,9 @@ def main():
                                args.info_file.split('/')[-1].split('.')[0] + expname + '.hdf5')
     elif args.bam_dataset:
         outfile = os.path.join(args.output_dir, 'BAMDataset_' + str(net).split('(')[0] + '_' +
+                               args.info_file.split('/')[-1].split('.')[0] + expname + '.hdf5')
+    elif args.stl_dataset:
+        outfile = os.path.join(args.output_dir, 'STLDataset_' + str(net).split('(')[0] + '_' +
                                args.info_file.split('/')[-1].split('.')[0] + expname + '.hdf5')
     else:
         outfile = os.path.join(args.output_dir, str(net).split('(')[0] + '_' +

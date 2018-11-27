@@ -34,10 +34,11 @@ def vgg16_bn(pretrained=False, **kwargs):
 
 class NarrowNet(torch.nn.Module):
     """Similar to MobileNetV2 just with more fc layers at the end."""
-    def __init__(self, featurenet, num_classes=1000):
+    def __init__(self, featurenet, dim_feature_out=128, num_classes=1000):
         super(NarrowNet, self).__init__()
         self.featurenet = featurenet
         self.num_classes = num_classes
+        self.dim_feature_out = dim_feature_out
         # initialise body network
         module_names = [name for name, _ in list(self.featurenet.named_children())]
         assert 'fc' in module_names or 'classifier' in module_names, 'require featurenet with layer type "fc" or "classifier"'
@@ -63,20 +64,18 @@ class NarrowNet(torch.nn.Module):
         self.featurenet.num_classes = -1
 
         # some fully connected layers
-        self.linear1 = torch.nn.Linear(self.in_features, 512, bias=True)
-        self.linear2 = torch.nn.Linear(512, 128, bias=True)
+        self.linear1 = torch.nn.Linear(self.in_features, self.dim_feature_out, bias=True)
 
-        self.classifier = torch.nn.Linear(128, self.num_classes, bias=True)
+        self.classifier = torch.nn.Linear(self.dim_feature_out, self.num_classes, bias=True)
 
     def forward(self, x):
         x = self.featurenet.forward(x)
         x = torch.nn.functional.relu(self.linear1(x))
-        x = torch.nn.functional.relu(self.linear2(x))
         x = self.classifier(x)
         return x
 
     def __repr__(self):
-        name = 'NarrowNet128_' + self.featurenet.__repr__().split('(')[0]
+        name = 'NarrowNet{}_'.format(self.dim_feature_out) + self.featurenet.__repr__().split('(')[0]
         return name
 
 
@@ -109,6 +108,24 @@ def remove_fc(net, inplace=False):
                 model.__setattr__(name, Identity())
     if not inplace:
         return model
+
+
+def make_featurenet(net, inplace=False):
+    model = copy.copy(net) if inplace else copy.deepcopy(net)
+    if str(net).startswith('AlexNet'):
+        del model.classifier[2:]
+        feature_dim = 4096
+    elif str(net).startswith('VGG'):
+        del model.classifier[1:]
+        feature_dim = 4096
+    elif str(net).startswith('MobileNetV2'):
+        del model.classifier[:]
+        feature_dim = 1280
+    else:
+        raise NotImplementedError
+    if not inplace:
+        return model, feature_dim
+    return feature_dim
 
 
 def narrownet(featurenet, **kwargs):

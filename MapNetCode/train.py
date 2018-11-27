@@ -6,41 +6,44 @@ import h5py
 import pickle
 import deepdish as dd
 import torch
+import pandas as pd
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from faiss_master import faiss
 from sklearn.svm import SVC
+import sklearn.metrics as metrics
+from collections import Counter
 import shutil
 import torch.nn as nn
 import copy
+from losses import TripletLoss, ExemplarTripletSelector, TripletSelector, select_semihard, select_hardest, select_random
 
-sys.path.append('../TSNENet')
+sys.path.append('../../TSNENet')
 from loss import TSNELoss
 from dataset import IndexDataset
 
 import matplotlib as mpl
 mpl.use('TkAgg')
 
-sys.path.append('../SmallNets')
-from triplets_loss import TripletLoss
-from triplets_utils import RandomNegativeTripletSelector, KHardestNegativeTripletSelector, BinaryTripletSelector
+# sys.path.append('../SmallNets')
+# from triplets_loss import TripletLoss
+# from triplets_utils import RandomNegativeTripletSelector, KHardestNegativeTripletSelector, \
+#     BinaryTripletSelector, SemihardNegativeTripletSelector
 
 
-sys.path.append('../FullPipeline')
+sys.path.append('../../FullPipeline')
 import matplotlib.pyplot as plt
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, load_weights
 
 
-if not os.getcwd().endswith('/MapNetCode'):
-    os.chdir('/net/hciserver03/storage/kschwarz/Documents/Masters/WebInterface/MapNetCode')
-sys.path.append('.')
 from model import MapNet
 from communication import send_payload, make_nodes
 
 
 cycle = 0
 previously_modified = np.array([], dtype=np.long)
-torch.cuda.set_device(0)
+if torch.cuda.is_available():
+    torch.cuda.set_device(0)
 
 
 def initialize_embedder(embedder, weight_file=None, feature=None,
@@ -298,7 +301,7 @@ def get_neighborhood(position, idx_modified):
     return neighbors
 
 
-def mutual_k_nearest_neighbors(vectors, sample_idcs, k=1):
+def mutual_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1):
     print('Find high dimensional neighbors...')
     start = time.time()
     index = faiss.IndexFlatL2(vectors.shape[1])  # build the index
@@ -315,10 +318,10 @@ def mutual_k_nearest_neighbors(vectors, sample_idcs, k=1):
 
     stop = time.time()
     print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
-    return neighbors
+    return neighbors, scores[neighbors]
 
 
-def score_k_nearest_neighbors(vectors, sample_idcs, k=1):
+def score_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1):
     print('Find high dimensional neighbors...')
     start = time.time()
     index = faiss.IndexFlatL2(vectors.shape[1])  # build the index
@@ -337,10 +340,10 @@ def score_k_nearest_neighbors(vectors, sample_idcs, k=1):
 
     stop = time.time()
     print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
-    return neighbors
+    return neighbors, scores[neighbors]
 
 
-def listed_k_nearest_neighbors(vectors, sample_idcs, k=1):
+def listed_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1):
     print('Find high dimensional neighbors...')
     start = time.time()
     index = faiss.IndexFlatL2(vectors.shape[1])  # build the index
@@ -349,8 +352,10 @@ def listed_k_nearest_neighbors(vectors, sample_idcs, k=1):
 
     mask = np.isin(idx, sample_idcs).__invert__()
     idx = idx[mask].reshape(len(idx), -1)
+    scores = np.arange(idx.shape[1]).reshape(1, -1) * np.ones(idx.shape)
 
     idx = idx.transpose().flatten()         # list nearest mutual neighbors and make them unique
+    scores = scores.transpose().flatten()
     neighbors = []
     for i in idx:
         if i not in neighbors:
@@ -360,25 +365,31 @@ def listed_k_nearest_neighbors(vectors, sample_idcs, k=1):
 
     stop = time.time()
     print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
-    return neighbors
+    return neighbors, scores
 
 
-def svm_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1):
+def svm_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1, test=False):
     # train an SVM to separate feature space into classes
     print('Find high dimensional neighbors...')
     start = time.time()
 
-    N_unlabeled = 500
-    clf = SVC(kernel='rbf', C=1.0, gamma='auto', probability=True)
-
-    idx_unlabeled = np.setdiff1d(range(len(vectors)), sample_idcs)
-    idx_unlabeled = np.random.choice(idx_unlabeled, N_unlabeled, replace=False)
     if negative_idcs is None:
         negative_idcs = []
 
+    N_unlabeled = min(500, len(vectors)-len(sample_idcs)-len(negative_idcs))
+    clf = SVC(kernel='rbf', C=1.0, gamma='auto', probability=True)
+    print('Train SVM using {} positives, {} random negatives and {} negatives.'.format(len(sample_idcs),
+                                                                                       N_unlabeled,
+                                                                                       len(negative_idcs)))
 
-    train_data = np.concatenate([vectors[sample_idcs], vectors[idx_unlabeled], vectors[negative_idcs]])
-    sample_weights = np.concatenate([5*np.ones(len(sample_idcs)), np.ones(N_unlabeled), 10*np.ones(len(negative_idcs))])
+    idx_unlabeled = np.setdiff1d(range(len(vectors)), np.concatenate([sample_idcs, negative_idcs]))
+    idx_unlabeled = np.random.choice(idx_unlabeled, N_unlabeled, replace=False)
+    if len(negative_idcs) == 0:
+        train_data = np.concatenate([vectors[sample_idcs], vectors[idx_unlabeled]])
+        sample_weights = np.concatenate([10 * np.ones(len(sample_idcs)), np.ones(N_unlabeled)])
+    else:
+        train_data = np.concatenate([vectors[sample_idcs], vectors[idx_unlabeled], vectors[negative_idcs]])
+        sample_weights = np.concatenate([10*np.ones(len(sample_idcs)), np.ones(N_unlabeled), 10*np.ones(len(negative_idcs))])
 
     labels = np.zeros(len(train_data))
     labels[:len(sample_idcs)] = 1
@@ -389,23 +400,62 @@ def svm_k_nearest_neighbors(vectors, sample_idcs, negative_idcs=None, k=1):
     neighbors = np.argsort(prob)[-1::-1][:k]
 
     stop = time.time()
+
+    if test:
+        category = 'genre'
+        thresholds = [0.75, 0.85, 0.9, 0.95]
+        eval_df_train = pd.DataFrame(columns=thresholds, index=['precision', 'recall', 'f1', 'N', 'positives', 'negatives'])
+        eval_df_test = pd.DataFrame(columns=thresholds, index=['precision', 'recall', 'f1', 'N', 'positives', 'negatives'])
+        for threshold in thresholds:
+            # evaluate on train data
+            info_file_train = '/export/home/kschwarz/Documents/Masters/wikiart/datasets/info_artist_49_multilabel_test.hdf5'
+            df = dd.io.load(info_file_train)['df']
+            label = df[category].values
+            count = Counter(label[sample_idcs])
+            mainlabel = np.array(count.keys())[np.argmax(count.values())]
+
+            probab = clf.predict_proba(vectors)[:, 1]
+            y_pred = probab >= threshold
+            y_true = label == mainlabel
+            prec, rec, f1, _ = metrics.precision_recall_fscore_support(y_true, y_pred, pos_label=1, average='binary')
+            eval_df_train[threshold] = prec, rec, f1, y_pred.sum(), len(sample_idcs), len(negative_idcs)
+
+            # evaluate on test data
+            feature_file_val = 'features/MobileNetV2_info_artist_49_multilabel_val.hdf5'
+            info_file_val = '/export/home/kschwarz/Documents/Masters/wikiart/datasets/info_artist_49_multilabel_val.hdf5'
+            df = dd.io.load(info_file_val)['df']
+            label = df[category].values
+            data = dd.io.load(feature_file_val)
+            try:
+                names, features = data['image_id'], data['feature']
+            except KeyError:
+                try:
+                    names, features = data['image_names'], data['features']
+                except KeyError:
+                    names, features = data['image_name'], data['features']
+            if not (names == df['image_id']).all():
+                raise RuntimeError('Image names in info file and feature file do not match.')
+            probab = clf.predict_proba(features)[:, 1]
+            y_pred = probab >= threshold
+            y_true = label == mainlabel
+            prec, rec, f1, _ = metrics.precision_recall_fscore_support(y_true, y_pred, pos_label=1, average='binary')
+            eval_df_test[threshold] = prec, rec, f1, y_pred.sum(), len(sample_idcs), len(negative_idcs)
+
+        print(eval_df_train)
+        print(eval_df_test)
+
     print('Done. ({}min {}s)'.format(int((stop-start))/60, (stop-start) % 60))
-    return neighbors
+    return neighbors, prob[neighbors]
 
 
-def select_neighbors(sample_idcs, feature, position, categories, label, socket_id, k=1,
-                     neighbor_fn=mutual_k_nearest_neighbors):
-    # get high dim nn
-    # neighbors = mutual_k_nearest_neighbors(feature, sample_idcs, k=k)
-    neighbors = neighbor_fn(feature, sample_idcs, k=k)
-    label[:, -1] = 'others'
-    label[sample_idcs, -1] = 'modified'
-    label[neighbors, -1] = 'neighbors'
+def select_neighbors(feature, sample_idcs, negative_idcs=None, k=1,
+                     neighbor_fn=mutual_k_nearest_neighbors, test=False):
+    neighbors, scores = neighbor_fn(feature, sample_idcs, negative_idcs=negative_idcs, k=k, test=test)
 
-    if socket_id is not None:
-        nodes = make_nodes(position=position, index=True, label=label)
-        send_payload(nodes, socket_id, categories=categories)
+    # scale scores to range (0, 1) and invert them --> range(1, 0)
+    scores = -(scores - scores.min()) * 1.0 / (scores.max() - scores.min()) + 1
 
+    return neighbors, scores
 
 class ChangeRateLogger(object):
     def __init__(self, n_track, threshold, order='smaller'):
@@ -514,11 +564,68 @@ class SoftNormLoss(nn.Module):
         return loss
 
 
+class ExemplarLoss(nn.Module):
+    def __init__(self, margin, buffer=0.0):
+        super(ExemplarLoss, self).__init__()
+        self.margin = margin
+        self.buffer = buffer
+
+    def forward(self, positives, negatives):
+        center = torch.mean(positives, dim=0, keepdim=True)
+        idx_center = torch.argmin(torch.norm(positives - center, p=2, dim=1))
+        exemplar = positives[idx_center]
+
+        attractive_loss = torch.clamp(
+            torch.norm(positives - exemplar, p=2, dim=1) - (1-self.buffer)*self.margin.type_as(positives), min=0)
+        repulsive_loss = torch.clamp((1+self.buffer)*self.margin.type_as(positives) - torch.norm(negatives - exemplar, p=2, dim=1), min=0)
+
+        loss = 0.5 * torch.mean(attractive_loss) + 0.5 * torch.mean(repulsive_loss)
+        return loss
+
+
+def pdist(vectors):
+    distance_matrix = -2 * vectors.mm(torch.t(vectors)) + vectors.pow(2).sum(dim=1).view(1, -1) + vectors.pow(2).sum(
+        dim=1).view(-1, 1)
+    return distance_matrix
+
+
+class ContrastiveLoss(nn.Module):
+    def __init__(self, margin, buffer=0.0):
+        super(ContrastiveLoss, self).__init__()
+        if not isinstance(margin, torch.Tensor):
+            margin = torch.as_tensor(margin)
+        self.margin = torch.nn.Parameter(margin)
+        self.buffer = buffer
+
+    def forward(self, positives, negatives):
+        # pairwise distances
+        dist_sq = pdist(torch.cat([positives, negatives]))
+        idcs_upper = torch.triu(torch.ones(dist_sq.shape, dtype=torch.uint8),
+                                diagonal=1)  # use symmetry and discard diagonal entries
+        idcs_positives = idcs_upper.clone()
+        idcs_positives[:, len(positives):] = 0
+
+        idcs_negatives = idcs_upper.clone()
+        idcs_negatives[:, :len(positives)] = 0
+        idcs_negatives[len(positives):, len(positives):] = 0
+
+        positives_dist = torch.sqrt(dist_sq[idcs_positives])
+        negatives_dist = torch.sqrt(dist_sq[idcs_negatives])
+
+        attractive_loss = torch.pow(torch.clamp(positives_dist - (1-self.buffer)*self.margin.type_as(dist_sq), min=0), 2)
+        repulsive_loss = torch.pow(torch.clamp((1+self.buffer)*self.margin.type_as(dist_sq) - negatives_dist, min=0), 2)
+
+        loss = 0.5 * torch.mean(attractive_loss) + 0.5 * torch.mean(repulsive_loss)
+        return loss
+
+
 def train(net, feature, image_id, old_embedding, target_embedding,
           idx_modified, idx_old_neighbors, idx_new_neighbors,
+          idx_negatives,
           lr=1e-3, experiment_id=None, socket_id=None, scale_func=None,
           categories=None, label=None):
     global cycle, previously_modified
+    print(idx_modified)
     cycle += 1
     # log and saving options
     exp_name = 'MapNet'
@@ -557,29 +664,32 @@ def train(net, feature, image_id, old_embedding, target_embedding,
     # Set up differend groups of indices
     # each sample belongs to one group exactly, hierarchy is as follows:
     # 1: samples moved by user in this cycle
-    # 2: new neighborhood
-    # 3: samples moved by user in previous cycles
-    # 4: old neighborhood
-    # 4: high dimensional neighborhood of moved samples
-    # 5: fix points / unrelated (remaining) samples
+    # 2: negatives selected through neighbor method
+    # 3: new neighborhood
+    # 4: samples moved by user in previous cycles
+    # 5: old neighborhood
+    # 5: high dimensional neighborhood of moved samples
+    # 6: fix points / unrelated (remaining) samples
 
-    # find high dimensional neighbors
-    idx_high_dim_neighbors = mutual_k_nearest_neighbors(feature, np.union1d(idx_modified, idx_new_neighbors),
-                                                        k=200)  # use the first 100 nn of modified samples
+    # # find high dimensional neighbors
+    idx_high_dim_neighbors, _ = svm_k_nearest_neighbors(feature, np.union1d(idx_modified, idx_new_neighbors),
+                                                        negative_idcs=idx_negatives,
+                                                        k=100)  # use the first 100 nn of modified samples          # TODO: Better rely on distance
 
     # ensure there is no overlap between different index groups
-    idx_new_neighbors = np.setdiff1d(idx_new_neighbors, idx_modified)
-    idx_previously_modified = np.setdiff1d(previously_modified, np.concatenate([idx_modified, idx_new_neighbors]))
+    idx_modified = np.setdiff1d(idx_modified, idx_negatives)            # just ensure in case negatives have moved accidentially    TODO: BETTER FILTER BEFORE
+    idx_new_neighbors = np.setdiff1d(idx_new_neighbors, np.concatenate([idx_modified, idx_negatives]))
+    idx_previously_modified = np.setdiff1d(previously_modified, np.concatenate([idx_modified, idx_new_neighbors, idx_negatives]))
     idx_old_neighbors = np.setdiff1d(np.concatenate([idx_old_neighbors, idx_high_dim_neighbors]),
-                                     np.concatenate([idx_modified, idx_new_neighbors, idx_previously_modified]))
+                                     np.concatenate([idx_modified, idx_new_neighbors, idx_previously_modified, idx_negatives]))
     idx_fix_points = np.setdiff1d(range(N),
                                   np.concatenate([idx_modified, idx_new_neighbors,
-                                                  idx_previously_modified, idx_old_neighbors]))
+                                                  idx_previously_modified, idx_old_neighbors, idx_negatives]))
 
     for i, g1 in enumerate([idx_modified, idx_new_neighbors, idx_previously_modified,
-                            idx_old_neighbors, idx_fix_points]):
+                            idx_old_neighbors, idx_fix_points, idx_negatives]):
         for j, g2 in enumerate([idx_modified, idx_new_neighbors, idx_previously_modified,
-                                idx_old_neighbors, idx_fix_points]):
+                                idx_old_neighbors, idx_fix_points, idx_negatives]):
             if i != j and len(np.intersect1d(g1, g2)) != 0:
                 print('groups: {}, {}'.format(i, j))
                 print(np.intersect1d(g1, g2))
@@ -587,33 +697,32 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
     print('Group Overview:'
           '\n\tModified samples: {}'
+          '\n\tNegative samples: {}'    
           '\n\tNew neighbors: {}'
           '\n\tPreviously modified samples: {}'
           '\n\tOld neighbors: {}'
           '\n\tFix points: {}'.format(
-        len(idx_modified), len(idx_new_neighbors), len(idx_previously_modified),
+        len(idx_modified), len(idx_negatives), len(idx_new_neighbors), len(idx_previously_modified),
         len(idx_old_neighbors), len(idx_fix_points)))
 
     # modify label
     label[idx_modified, -1] = 'modified'
+    label[idx_negatives, -1] = 'negative'
     label[idx_previously_modified, -1] = 'prev_modified'
     label[idx_new_neighbors, -1] = 'new neighbors'
     label[idx_old_neighbors, -1] = 'old neighbors'
     label[idx_high_dim_neighbors, -1] = 'high dim neighbors'
     label[idx_fix_points, -1] = 'other'
 
-    optimizer = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, threshold=1e-3,
-                                                           verbose=True)
-
     kl_criterion = TSNELoss(N, use_cuda=use_cuda)
     l2_criterion = torch.nn.MSELoss(reduction='none')                  # keep the output fixed
+    hl2_criterion = torch.nn.MSELoss(reduction='none')                  # keep the output fixed
     noise_criterion = NormalizedMSE()
 
     # define the index samplers for data
 
     batch_size = 500
-    max_len = max(len(idx_modified) + len(idx_previously_modified), len(idx_new_neighbors),
+    max_len = max(len(idx_modified) + len(idx_previously_modified), len(idx_negatives), len(idx_new_neighbors),
                   len(idx_old_neighbors), len(idx_fix_points))
     if max_len == len(idx_fix_points):
         n_batches = max_len / (batch_size * 2) + 1
@@ -622,6 +731,10 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
     sampler_modified = torch.utils.data.BatchSampler(
         sampler=torch.utils.data.SubsetRandomSampler(idx_modified),
+        batch_size=batch_size, drop_last=False)
+
+    sampler_negatives = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_negatives),
         batch_size=batch_size, drop_last=False)
 
     sampler_new_neighbors = torch.utils.data.BatchSampler(
@@ -636,10 +749,13 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         sampler=torch.utils.data.SubsetRandomSampler(idx_old_neighbors),
         batch_size=batch_size, drop_last=False)
 
+    sampler_high_dim_neighbors = torch.utils.data.BatchSampler(
+        sampler=torch.utils.data.SubsetRandomSampler(idx_high_dim_neighbors),
+        batch_size=batch_size, drop_last=False)
+
     sampler_fixed = torch.utils.data.BatchSampler(
         sampler=torch.utils.data.SubsetRandomSampler(idx_fix_points),
         batch_size=2 * batch_size, drop_last=False)
-
 
     # train network until scheduler reduces learning rate to threshold value
     lr_threshold = 1e-5
@@ -647,17 +763,6 @@ def train(net, feature, image_id, old_embedding, target_embedding,
     track_noise_reg = ChangeRateLogger(n_track=10, threshold=-1, order='smaller')          # only consider order --> negative threshold
     stop_criterion = False
 
-    embeddings = {}
-    model_states = {}
-    cpu_net = copy.deepcopy(net).cpu() if use_cuda else net
-    model_states[0] = {
-        'epoch': 0,
-        'loss': float('inf'),
-        'state_dict': cpu_net.state_dict().copy(),
-        'optimizer': optimizer.state_dict().copy(),
-        'scheduler': scheduler.state_dict().copy()
-    }
-    embeddings[0] = old_embedding.numpy().copy()
 
     epoch = 1
     new_features = feature.copy()
@@ -673,16 +778,39 @@ def train(net, feature, image_id, old_embedding, target_embedding,
     tensor_feature = torch.from_numpy(feature)
     norms = torch.norm(tensor_feature, p=2, dim=1)
     feature_norm = torch.mean(norms)
-    norm_margin = norms.std()
-    norm_criterion = SoftNormLoss(norm_value=feature_norm, margin=norm_margin)
-    # distance_criterion = NormalizedDistanceLoss()
+    feature_std = torch.std(tensor_feature[np.concatenate([idx_new_neighbors, idx_modified])], dim=0)
+    # distance_criterion = ExemplarLoss(margin=feature_norm, buffer=0.5)
+    # distance_criterion = ContrastiveLoss(margin=feature_norm, buffer=0.1)
+    triplet_selector = ExemplarTripletSelector(margin=feature_norm, negative_selection_fn=select_semihard,
+                                               negative_labels=(torch.tensor(0),),
+                                               avg_samples_per_cluster=20, gpu=True, parallel=False, niter=10)
+    distance_criterion = TripletLoss(triplet_selector=triplet_selector, margin=triplet_selector.margin)
+    dist_negatives = []
     # distance_criterion = ContrastiveNormalizedDistanceLoss(margin=0.2 * feature_norm)
-    triplet_margin = 0.2 * feature_norm
-    triplet_selector = BinaryTripletSelector(selection_positives='hardest', selection_negatives='random',
-                                             n_per_anchor=19, buffer=100, multiplier_negatives=3)
-    distance_criterion = TripletLoss(margin=triplet_margin, triplet_selector=triplet_selector)
+    # triplet_margin = feature_norm
+    # triplet_selector = SemihardNegativeTripletSelector(margin=triplet_margin, cpu=False, preselect_index_positives=10, preselect_index_negatives=1, selection='random')
+    # distance_criterion = TripletLoss(margin=triplet_margin, triplet_selector=triplet_selector)
+    # positive_triplet_collector = np.array([], dtype=int)
+    # negative_triplet_collector = np.array([], dtype=int)
 
     del norms
+
+    optimizer = torch.optim.Adam([p for p in net.parameters() if p.requires_grad] + [p for p in distance_criterion.parameters() if p.requires_grad], lr=lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, threshold=1e-3,
+                                                           verbose=True)
+
+    embeddings = {}
+    model_states = {}
+    cpu_net = copy.deepcopy(net).cpu() if use_cuda else net
+    model_states[0] = {
+        'epoch': 0,
+        'loss': float('inf'),
+        'state_dict': cpu_net.state_dict().copy(),
+        'optimizer': optimizer.state_dict().copy(),
+        'scheduler': scheduler.state_dict().copy()
+    }
+    embeddings[0] = old_embedding.numpy().copy()
+
     while not stop_criterion:
         # if epoch < 30:           # do not use dropout at first
         #     net.eval()
@@ -699,11 +827,11 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
         # set up losses
         l2_losses = AverageMeter()
+        hl2_losses = AverageMeter()
         kl_losses = AverageMeter()
         distance_losses = AverageMeter()
         noise_regularization = AverageMeter()
         feature_norm = AverageMeter()
-        norm_losses = AverageMeter()
         weight_regularization = AverageMeter()
         losses = AverageMeter()
 
@@ -718,8 +846,8 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         t_train_start = time.time()
         t_load_start = time.time()
         batch_loaders = []
-        for smplr in [sampler_modified, sampler_new_neighbors, sampler_prev_modified,
-                      sampler_old_neighbors, sampler_fixed]:
+        for smplr in [sampler_modified, sampler_negatives, sampler_new_neighbors, sampler_prev_modified,
+                      sampler_old_neighbors, sampler_fixed, sampler_high_dim_neighbors]:
             batches = list(smplr)
             if len(batches) == 0:
                 batches = [[] for i in range(n_batches)]
@@ -732,17 +860,20 @@ def train(net, feature, image_id, old_embedding, target_embedding,
             t_tot_start = time.time()
 
             moved_indices = batch_loaders[0][batch_idx]
-            new_neigh_indices = batch_loaders[1][batch_idx]
-            prev_moved_indices = batch_loaders[2][batch_idx]
-            old_neigh_indices = batch_loaders[3][batch_idx]
-            fixed_indices = batch_loaders[4][batch_idx]
-            n_moved, n_new, n_prev, n_old, n_fixed = (len(moved_indices), len(new_neigh_indices),
-                                                      len(prev_moved_indices),
-                                                      len(old_neigh_indices), len(fixed_indices))
+            negatives_indices = batch_loaders[1][batch_idx]
+            new_neigh_indices = batch_loaders[2][batch_idx]
+            prev_moved_indices = batch_loaders[3][batch_idx]
+            old_neigh_indices = batch_loaders[4][batch_idx]
+            fixed_indices = batch_loaders[5][batch_idx]
+            high_neigh_indices = batch_loaders[6][batch_idx]
+            n_moved, n_neg, n_new, n_prev, n_old, n_fixed, n_high = (len(moved_indices), len(negatives_indices),
+                                                             len(new_neigh_indices), len(prev_moved_indices),
+                                                             len(old_neigh_indices),
+                                                             len(fixed_indices), len(high_neigh_indices))
 
             # load data
-            indices = np.concatenate([new_neigh_indices, moved_indices, prev_moved_indices,
-                                      fixed_indices, old_neigh_indices]).astype(long)
+            indices = np.concatenate([new_neigh_indices, moved_indices, negatives_indices, prev_moved_indices,
+                                      fixed_indices, old_neigh_indices, high_neigh_indices]).astype(long)
             if len(indices) < 3 * kl_criterion.perplexity + 2:
                 continue
             data = tensor_feature[indices]
@@ -755,8 +886,8 @@ def train(net, feature, image_id, old_embedding, target_embedding,
             t_forward_start = time.time()
 
             fts_mod = net.mapping(input)
-            # fts_mod_noise = net.mapping(input + 0.1 * torch.rand(input.shape).type_as(input))
-            fts_mod_noise = net.mapping(input + torch.rand(input.shape).type_as(input))
+            noise = torch.randn_like(input) * 0.1 * feature_std.type_as(input)         # scale by dimensionwise std of features
+            fts_mod_noise = net.mapping(input + noise)
             emb_mod = net.embedder(torch.nn.functional.relu(fts_mod))
 
             t_forward_end = time.time()
@@ -771,53 +902,77 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
             t_loss_start = time.time()
 
-            noise_reg = noise_criterion(fts_mod, fts_mod_noise)
-            noise_regularization.update(noise_reg.data, len(data))
+            # LOW DIMENSIONAL L2 LOSS
+            batch_idx_l2_fixed = np.concatenate([np.arange(0, n_new), np.arange(n_new+n_moved, len(indices)-n_high)])
+            idx_l2_fixed = indices[batch_idx_l2_fixed]        # on all but moved and high dimensional nn
+            # idx_l2_fixed = np.concatenate([new_neigh_indices, negatives_indices, prev_moved_indices,
+            #                                fixed_indices, old_neigh_indices, high_neigh_indices]).astype(long)
+            # l2_loss_input = torch.cat([emb_mod[:n_new], emb_mod[n_new + n_moved:]])
+            l2_loss = torch.mean(
+                l2_criterion(emb_mod[batch_idx_l2_fixed], target_embedding[idx_l2_fixed].type_as(emb_mod)))
+            l2_losses.update(l2_loss.data, len(idx_l2_fixed))
 
             kl_loss = kl_criterion(fts_mod, emb_mod, indices)
             kl_losses.update(kl_loss.data, len(data))
 
-            # TODO: L2 LOSS ALSO ON NEW NEIGHBORS!
-            idx_l2_fixed = np.concatenate([moved_indices, prev_moved_indices, fixed_indices]).astype(long)
-            l2_loss = torch.mean(
-                l2_criterion(emb_mod[n_new:n_new + n_moved + n_prev + n_fixed],
-                             target_embedding[idx_l2_fixed].type_as(emb_mod)),
-                dim=1)
-            # weigh loss of space samples equally to all modified samples
-            l2_loss = 0.5 * torch.mean(l2_loss[: n_moved + n_prev]) + \
-                      0.5 * torch.mean(l2_loss[n_moved + n_prev:])
+            # # TRIPLET LOSS FOR MOVED SAMPLES
+            # distance_loss_input = fts_mod[n_new: n_new + n_moved + n_neg]
+            # distance_loss_target = torch.cat([torch.ones(n_moved), torch.zeros(n_neg)])
+            # selected_negatives = None if n_neg == 0 else {1: np.arange(n_moved, n_moved + n_neg)}
+            # distance_loss, positive_triplets, negative_triplets = distance_criterion(distance_loss_input, distance_loss_target, concealed_classes=[0], weights=None, selected_negatives=selected_negatives)
+            # if positive_triplets is not None:
+            #     positive_triplets = np.unique(positive_triplets.numpy().flatten()).astype(int)
+            #     negative_triplets = np.unique(negative_triplets.numpy()).astype(int)
+            #     positive_triplets = indices[n_new: n_new + n_moved + n_neg][positive_triplets]
+            #     negative_triplets = indices[n_new: n_new + n_moved + n_neg][negative_triplets]
+            #     positive_triplet_collector = np.union1d(positive_triplet_collector, positive_triplets)
+            #     negative_triplet_collector = np.union1d(negative_triplet_collector, negative_triplets)
+            distance_loss_positives = fts_mod[n_new: n_new + n_moved]
+            N_rand_negatives = max(2*n_moved, min(500, n_prev+n_fixed+n_old))
+            idcs_distance_negatives = np.concatenate([np.arange(n_new + n_moved, n_new + n_moved + n_neg),
+                                                      np.random.choice(
+                                                          np.arange(n_new + n_moved + n_neg,
+                                                                    n_new + n_moved + n_neg + n_prev + n_fixed + n_old),
+                                                          N_rand_negatives, replace=False)
+                                                      ])
+            dist_negatives = np.union1d(dist_negatives, indices[idcs_distance_negatives])
+            distance_loss_negatives = fts_mod[idcs_distance_negatives]
+            distance_loss_label = torch.cat([torch.ones(n_moved, dtype=torch.long),
+                                             torch.zeros(N_rand_negatives + n_neg, dtype=torch.long)])
+            distance_loss_weights = torch.cat([torch.ones(n_moved),
+                                               torch.ones(n_neg),
+                                               0.5 * torch.ones(N_rand_negatives)])
+            distance_loss = distance_criterion(torch.cat([distance_loss_positives, distance_loss_negatives]), distance_loss_label, distance_loss_weights)
+            # distance_loss = distance_criterion(positives=distance_loss_positives, negatives=distance_loss_negatives)          # for contrastive loss
+            distance_losses.update(distance_loss.data, n_moved+n_neg)
 
-            l2_losses.update(l2_loss.data, len(idx_l2_fixed))
+            # # HIGH DIMENSIONAL L2 LOSS ON ALL BUT MOVED
+            # HIGH DIMENSIONAL L2 LOSS ON NEGATIVES and previously moved ONLY
+            # idx_hl2_fixed = np.concatenate([negatives_indices, prev_moved_indices,
+            #                                 # fixed_indices, old_neigh_indices,
+            #                                 # high_neigh_indices             # LEAVE OUT HIGH DIMENSIONAL NEIGHBORS and see what happens...
+            #                                 ]).astype(long)
+            idx_hl2_fixed = indices[idcs_distance_negatives]
+            hl2_loss_input = distance_loss_negatives
+            hl2_loss_target = tensor_feature[idx_hl2_fixed]
+            hl2_loss = torch.mean(hl2_criterion(hl2_loss_input, hl2_loss_target.type_as(hl2_loss_input)))
 
-            if epoch < 0:
-                distance_loss = torch.tensor(0.)
-            else:
-                # distance_loss = distance_criterion(fts_mod[:n_new + n_moved])
-                distance_loss_input = fts_mod[:-n_old] if n_old > 0 else fts_mod
-                distance_loss_target = torch.cat([torch.ones(n_new + n_moved), torch.zeros(n_prev + n_fixed)])
-                distance_loss_weights = None
-                # also use high dimensional nn
-                high_dim_nn = np.where(np.isin(indices, idx_high_dim_neighbors))[0]
-                if len(high_dim_nn) > 0:
-                    distance_loss_input = torch.cat([distance_loss_input, fts_mod[high_dim_nn]])
-                    distance_loss_target = torch.cat([distance_loss_target, torch.ones(len(high_dim_nn))])
-                    distance_loss_weights = torch.cat([torch.ones(n_new+n_moved+n_prev+n_fixed), 0.5*torch.ones(len(high_dim_nn))])
-                distance_loss, _ = distance_criterion(distance_loss_input, distance_loss_target, concealed_classes=[0], weights=distance_loss_weights)
-                distance_loss_noise, _ = distance_criterion(distance_loss_input + torch.rand(distance_loss_input.shape).type_as(distance_loss_input), distance_loss_target, concealed_classes=[0])
-                distance_loss = 0.5 * distance_loss + 0.5 * distance_loss_noise
+            hl2_losses.update(hl2_loss.data, len(idx_hl2_fixed))
 
-            distance_losses.update(distance_loss.data, n_new + n_moved)
 
-            norm_loss = norm_criterion(torch.mean(fts_mod.norm(p=2, dim=1)))
-            norm_losses.update(norm_loss.data, len(data))
-
+            # REGULARIZATION
             weight_reg = torch.autograd.Variable(torch.tensor(0.)).type_as(l2_loss)
             for param in net.mapping.parameters():
                 weight_reg += param.norm(1)
             weight_regularization.update(weight_reg, len(data))
 
-            loss = l2_loss + 10 * kl_loss.type_as(l2_loss) + 0.8 * distance_loss.type_as(l2_loss) + \
-                   1e-4 * weight_reg.type_as(l2_loss)#+ norm_loss.type_as(l2_loss)\ 1e3 * noise_reg.type_as(l2_loss)
+            noise_reg = noise_criterion(fts_mod, fts_mod_noise)
+            noise_regularization.update(noise_reg.data, len(data))
+
+            loss = distance_loss.type_as(l2_loss) + 10 * hl2_loss + 0 * l2_loss + 1 * kl_loss.type_as(l2_loss)# + \
+                   #10 * noise_reg.type_as(l2_loss)# + 1e-5 * weight_reg.type_as(l2_loss)
+            # if epoch >= 10:
+            #     loss = loss + 1e-5 * weight_reg.type_as(l2_loss)
             losses.update(loss.data, len(data))
 
             t_loss_end = time.time()
@@ -875,12 +1030,15 @@ def train(net, feature, image_id, old_embedding, target_embedding,
 
         t_tensorboard_start = time.time()
         scheduler.step(losses.avg)
+        # label[positive_triplet_collector, -1] = 'positive triplet'
+        # label[negative_triplet_collector, -1] = 'negative triplet'
         log.write('l2_loss', float(l2_losses.avg), epoch, test=False)
+        log.write('hl2_loss', float(hl2_losses.avg), epoch, test=False)
         log.write('distance_loss', float(distance_losses.avg), epoch, test=False)
         log.write('kl_loss', float(kl_losses.avg), epoch, test=False)
         log.write('noise_regularization', float(noise_regularization.avg), epoch, test=False)
         log.write('feature_norm', float(feature_norm.avg), epoch, test=False)
-        log.write('norm_loss', float(norm_losses.avg), epoch, test=False)
+        # log.write('norm_loss', float(norm_losses.avg), epoch, test=False)
         log.write('weight_reg', float(weight_regularization.avg), epoch, test=False)
         log.write('loss', float(losses.avg), epoch, test=False)
         t_tensorboard_end = time.time()
@@ -905,18 +1063,22 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         print('Train Epoch: {}\t'
               'Loss: {:.4f}\t'
               'L2 Loss: {:.4f}\t'
+              'HL2 Loss: {:.4f}\t'
               'Distance Loss: {:.4f}\t'
               'KL Loss: {:.4f}\t'
-              'Noise Regularization: {:.4f}\t'
-              'Weight Regularization: {:.4f}\t'
+              'Weight Reg: {:.4f}\t'
+              'Noise Reg: {:.4f}\t'
+              'Margin: {:.4f}\t'
               'LR: {:.6f}'.format(
             epoch,
             float(losses.avg),
-            float(l2_losses.avg),
-            float(distance_losses.avg),
-            float(kl_losses.avg),
-            float(noise_regularization.avg),
-            float(1e-4 * weight_regularization.avg),
+            float(0.1 * l2_losses.avg),
+            float(10 * hl2_losses.avg),
+            float(1 * distance_losses.avg),
+            float(10 * kl_losses.avg),
+            float(1e-5 * weight_regularization.avg),
+            float(10 * noise_regularization.avg),
+            distance_criterion.margin,
             optimizer.param_groups[-1]['lr']))
 
         t_send_start = time.time()
@@ -931,7 +1093,7 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         t_send.append(t_send_end - t_send_start)
 
         epoch += 1
-        l2_stop_criterion = track_l2_loss.add_value(l2_losses.avg)
+        l2_stop_criterion = False#track_l2_loss.add_value(l2_losses.avg)
         epoch_stop_criterion = epoch > 150
         regularization_stop_criterion = False#track_noise_reg.add_value(noise_regularization.avg)
         lr_stop_criterion = optimizer.param_groups[-1]['lr'] < lr_threshold
@@ -988,12 +1150,14 @@ def train(net, feature, image_id, old_embedding, target_embedding,
         f.create_dataset(name='image_id', shape=image_id.shape, dtype=image_id.dtype, data=image_id)
     print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_feature)))
 
-    torch.save(model_states, outfile_model_states)
+    model_states_to_save = {k: v for k, v in model_states.items()[::3]}                # only every 3rd
+    torch.save(model_states_to_save, outfile_model_states)
     print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_model_states)))
 
     # write config file
     config_dict = {'idx_modified': idx_modified, 'idx_old_neighbors': idx_old_neighbors,
-                   'idx_new_neighbors': idx_new_neighbors, 'idx_high_dim_neighbors': idx_high_dim_neighbors}
+                   'idx_new_neighbors': idx_new_neighbors, 'idx_high_dim_neighbors': idx_high_dim_neighbors,
+                   'idx_negatives': idx_negatives, 'dist_negatives': dist_negatives}
     with open(outfile_config, 'w') as f:
         pickle.dump(config_dict, f)
     print('\tSaved {}'.format(os.path.join(os.getcwd(), outfile_config)))

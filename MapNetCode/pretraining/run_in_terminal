@@ -2,6 +2,9 @@ train_multitask.py
 
 python train_multitask.py --val_file wikiart_datasets/info_artist_49_multilabel_val.hdf5 --train_file wikiart_datasets/info_artist_49_multilabel_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_artist49_images --stat_file wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl --epochs 100 --batch_size 32 --lr 1e-3 --device 0 --model mobilenet_v2
 
+Final:
+python train_multitask.py --val_file wikiart_datasets/info_elgammal_subset_val.hdf5 --train_file wikiart_datasets/info_elgammal_subset_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --epochs 100 --batch_size 32 --lr 1e-3 --device 1 --feature_dim 512 --model vgg16_bn --task_selection style --exp_name no_artist_no_genre
+
 office dataset
 python train_multitask.py --val_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_val.hdf5 --train_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016 --stat_file /export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/info_train_mean_std.pkl --epochs 100 --batch_size 32 --lr 1e-3 --device 0 --model mobilenet_v2 --office_dataset --exp_name office_dataset
 
@@ -13,6 +16,10 @@ get_feature.py
 
 python get_feature.py  --stat_file wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl --im_path /export/home/kschwarz/Documents/Data/Wikiart_artist49_images --batch_size 64 --info_file wikiart_datasets/info_artist_49_multilabel_val.hdf5 --weight_file models/09-05-13-36_NarrowNet128_MobileNetV2_model_best.pth.tar --model mobilenet_v2 --device 2
 
+Final:
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 32 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_artist --weight_file models/10-15-10-46_NarrowNet512_VGG_no_artist_model_best.pth.tar
+
+
 shape dataset:
 python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/Geometric_Shapes/train_mean_std.pkl --shape_dataset --batch_size 64 --info_file test --weight_file models/09-12-09-53_ShapeDataset_NarrowNet128_MobileNetV2_model_best.pth.tar --model mobilenet_v2 --device 2
 
@@ -21,3 +28,8 @@ python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/OfficeHo
 
 bam dataset
 python get_feature.py  --stat_file /export/home/kschwarz/Documents/Data/BAM/info_train_mean_std.pkl --bam_dataset --im_path /export/home/kschwarz/Documents/Data/BAM --batch_size 64 --info_file /export/home/kschwarz/Documents/Data/BAM/info_test.hdf5 --weight_file models/09-27-12-15_NarrowNet128_MobileNetV2_bam_dataset_model_best.pth.tar --model mobilenet_v2 --device 2
+
+
+
+SMALL NETS
+python train_with_triplets.py --test_file ../WebInterface/MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_val.hdf5 --train_file ../WebInterface/MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file ../WebInterface/MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --class_label artist_name --model mobilenet_v2 --epochs 100 --exp_name elgammal_subset

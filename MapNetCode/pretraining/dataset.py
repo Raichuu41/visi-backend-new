@@ -23,20 +23,31 @@ class Wikiart(data.Dataset):
         print('Load info file...')
         info_dict = dd.io.load(path_to_info_dict)['df']
         print('Done.')
+        if not 'image_id' in info_dict.keys():
+            info_dict['image_id'] = info_dict.index
         for c in self.classes:
             assert c in info_dict.keys(), \
                 'Class {} does not exist in info dict. Select from {}'.format(c, info_dict.keys())
-        classes = set(self.classes + ['image_id'])
-        dfs = [info_dict[c] for c in classes]
-        masks = np.array([df.isnull().values for df in dfs]).__invert__()
-        idcs = np.where(np.prod(masks, axis=0))[0]
-        dfs = {df.name: df[idcs] for df in dfs}
-        return pd.DataFrame(dfs)
+        classes = list(set(self.classes + ['image_id']))
+        # # do not allow missing labels
+        # dfs = [info_dict[c] for c in classes]
+        # masks = np.array([df.isnull().values for df in dfs]).__invert__()
+        # idcs = np.where(np.prod(masks, axis=0))[0]
+        # dfs = {df.name: df[idcs] for df in dfs}
+        # return pd.DataFrame(dfs)
+
+        # do not allow samples with no labels
+        mask = info_dict[self.classes].isnull().values.__invert__()
+        valid = np.any(mask, axis=1)
+        df = info_dict[valid]
+        df.index = range(len(df))
+
+        return df[classes]
 
     def _get_labels_to_ints(self):
         labels_to_ints = {}
         for c in self.classes:
-            df = self.df[c]
+            df = self.df[c].dropna()
             labels = set(df.values)
             if None in labels:
                 labels.remove(None)
@@ -55,16 +66,15 @@ class Wikiart(data.Dataset):
         return len(self.df['image_id'])
 
     def __getitem__(self, index):
-        labels_to_ints = self.labels_to_ints.copy()
-        for k in labels_to_ints.keys():
-            labels_to_ints[k][None] = -1
         img = Image.open(os.path.join(self.impath, self.df['image_id'][index] + '.jpg')).convert(mode='RGB')
         if self.transform is not None:
             img = self.transform(img)
-        labels = [self.df[c][index] for c in self.classes]
-        labels = [labels_to_ints[c][l] for c, l in zip(self.classes, labels)]
-
-        return img, labels
+        sample_labels = [self.df[c][index] for c in self.classes]
+        int_labels = []
+        for c, l in zip(self.classes, sample_labels):
+            lbl = -1 if l not in self.labels_to_ints[c].keys() else self.labels_to_ints[c][l]
+            int_labels.append(lbl)
+        return img, int_labels
 
 
 def compute_mean_std(path_to_info_file, impath='/export/home/kschwarz/Documents/Data/Wikiart_artist49_images'):
@@ -97,6 +107,6 @@ def compute_mean_std(path_to_info_file, impath='/export/home/kschwarz/Documents/
     print('saved \n\tstat file: {}'.format(fname + '_mean_std.pkl'))
 
 
-# path_to_info_file = '/export/home/kschwarz/Documents/Data/BAM/info_train.hdf5'
-# impath = '/export/home/kschwarz/Documents/Data/BAM'
+# path_to_info_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_train.hdf5'
+# impath = '/export/home/asanakoy/workspace/wikiart/images'
 # compute_mean_std(path_to_info_file, impath)

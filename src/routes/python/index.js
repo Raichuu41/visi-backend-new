@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import fetch from 'node-fetch';
 import { compareAndClean } from '../../util/compareAndClean';
-import { pythonApi } from '../../config/env';
+import { pythonApi, mockDataLength } from '../../config/env';
 import buildLabels from '../../util/buildLabels';
+import {getRandomUnusedId} from "../../util/getRandomUnusedId";
 
 const router = Router();
 
@@ -34,20 +35,19 @@ router.post('/updateLabels', async (req, res, next) => {
     }
 });
 
-// POST TODO URL
+// This is right now just for the python backend to get data back to UI without request
 router.post('/updateEmbedding', async (req, res, next) => {
     console.log('POST /updateEmbedding');
-    const { body } = req;
-    const { socket_id } = body;
+    // TODO the dev should get insight what body is transporting
+    const { categories, nodes, socket_id } = req.body;
 
     if (!socket_id) return next(new Error('No socket connection'));
 
-    let labels;
-    if (body.categories) labels = buildLabels(body.categories, body.nodes);
+    const labels = categories ? buildLabels(categories, nodes) : undefined;
     const socket = req.app.io.sockets.sockets[socket_id];
     if (!socket) return next(new Error(`No socket with ID: ${socket_id} found`)); // TODO maybe deliver error to frontend
     if (labels) socket.emit('updateLabels', labels);
-    socket.emit('updateEmbedding', body, (confirm) => {
+    socket.emit('updateEmbedding', { nodes }, (confirm) => {
         console.log(confirm);
         res.json(confirm);
     });
@@ -66,7 +66,7 @@ router.post('/startUpdateEmbedding', async (req, res, next) => {
 
     try {
         const time = process.hrtime();
-        const data = await fetch(`http://${pythonApi}:8000/startUpdateEmbedding`, {
+        await fetch(`http://${pythonApi}:8000/startUpdateEmbedding`, {
             method: 'POST',
             header: { 'Content-type': 'application/json' },
             body: JSON.stringify(body),
@@ -126,15 +126,21 @@ router.post('/getGroupNeighbours', async (req, res, next) => {
         body.negatives = [];
         Object.keys(removedNeighbours).forEach(key => removedNeighbours[key] < threshold && body.negatives.push(+key));
     }
-    console.log({body})
+    console.log({ body });
 
     if (process.env.NODE_ENV === 'development') {
         res.status = 200;
+
+        const dumyNeighbours = {};
+
+        for (let n = 0; n < 5; n += 1) {
+            const id = getRandomUnusedId(mockDataLength, body.positives);
+            dumyNeighbours[id] = Math.random() >= 0.5 ? 0.1 : 0.3;
+        }
+
         res.send({
-            group: [1, 4, 5],
-            neighbours: {
-                3: 0.2, 5: 0.5, 10: 0.1, 12: 0.01,
-            },
+            group: body.positives,
+            neighbours: dumyNeighbours,
         });
     } else {
         try {

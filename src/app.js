@@ -1,21 +1,29 @@
+import fs from 'fs';
 import fetch from 'node-fetch';
-import { promisify } from 'util';
 import sharp from 'sharp';
 import morgan from 'morgan';
-// import graphMock from './mock/graphSmall'
-// import exampleGraph from './mock/example_graph'
-// import exampleNodes from './mock/exampleNodes';
+import cors from 'cors';
+import express from 'express';
+import socketIo from 'socket.io';
+import clusterfck from 'tayden-clusterfck';
 import exampleNodes from '../mock/2582_sub_wikiarts';
-// import { mergeLinksToNodes } from "./util/mergeLinksToNodes";
 import { compareAndClean } from './util/compareAndClean';
 import { getRandomColor } from './util/getRandomColor';
 import pythonRoute from './routes/python/index';
 import svmRoute from './routes/svm';
-import buildTripel from './util/buildTripels';
 import { colorTable } from './config/colors';
 import { imgSizes } from './config/imgSizes';
-// import { dataSet } from './config/datasets';
 import dataset from './routes/dataset';
+import { mockDataLength, pythonApi } from './config/env';
+import { buildLabels } from './util/buildLabels';
+// import graphMock from './mock/graphSmall'
+// import exampleGraph from './mock/example_graph'
+// import exampleNodes from './mock/exampleNodes';
+// import { mergeLinksToNodes } from "./util/mergeLinksToNodes";
+// import buildTripel from './util/buildTripels';
+// import { dataSet } from './config/datasets';
+// import kdbush from 'kdbush';
+// const kde2d = require('@stdlib/stdlib/lib/node_modules/@stdlib/stats/kde2d');
 import {pythonApi} from "./config/env";
 import buildLabels from "./util/buildLabels";
 
@@ -24,17 +32,10 @@ const fs = require('fs');
 
 const kde2d = require('@stdlib/stdlib/lib/node_modules/@stdlib/stats/kde2d');
 
-const mockDataLength = 50; // Object.keys(exampleNodes).length;
-
-
 // const path = require('path');
-const socket_io = require('socket.io');
 // required for file serving
 const app = express();
 
-// const kdbush = require('kdbush');
-
-const clusterfck = require('tayden-clusterfck');
 
 const readFile = path =>
     new Promise((res, rej) => {
@@ -49,7 +50,7 @@ const readFile = path =>
 
 
 // Socket.io
-const io = socket_io({ pingTimeout: 1200000, pingInterval: 300000 });
+const io = socketIo({ pingTimeout: 1200000, pingInterval: 300000 });
 app.io = io;
 
 const scaledPicsHash = {}; // scaled images in new archetecture 2
@@ -58,7 +59,7 @@ const scaledPicsHash = {}; // scaled images in new archetecture 2
 
 const largeFileHash = {}; // the detailed images witch are loaded if needen
 
-let nodesStore = {};
+// let nodesStore = {};
 
 // let clusterStore = null;
 
@@ -97,7 +98,11 @@ if (process.env.NODE_ENV === 'development') {
             return sharp(path)
                 .raw()
                 .toBuffer({ resolveWithObject: true })
-                .then(pic => pics[size] = pic);
+                .then(pic => pics[size] = pic)
+                .catch(e => {
+                    console.error(e)
+                    console.log({path})
+                });
         })).then(() => {
             if (!(n % 100)) {
                 const diffFillImgDataCach = process.hrtime(timeFillImgDataCach);
@@ -139,6 +144,7 @@ app.use(bodyParser.urlencoded({ extended: false })) */
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: false, limit: '5mb' }));
 app.use(morgan('dev'));
+app.use(cors());
 
 
 // console.log(process.env.NODE_ENV === 'development')
@@ -183,7 +189,7 @@ io.sockets.on('connection', (socket) => {
     socket.on('requestImage', async (data) => {
         // console.log("requestImage")
         // console.log(data.name)
-        const name = data.name;
+        const { name } = data;
         if (name) {
             try {
                 let buffer;
@@ -210,6 +216,63 @@ io.sockets.on('connection', (socket) => {
     });
 
     socket.on('updateNodes', async (data) => {
+        console.log('updateNodes');
+        // console.log(data);
+
+        let updatedNodes = {};
+
+        // HINT The data should never by empty - inital nodes comes from getNodes
+        const { nodes } = data;
+        // categories can but don't have to change
+        let categories;
+
+        if (process.env.NODE_ENV === 'development') {
+            // TODO generate random x, y for new nodes
+            const l = Object.keys(nodes).length;
+            Object.keys(nodes).forEach((i) => {
+                const node = nodes[i];
+                if (i > 0 && i < l - 1) {
+                    node.x += Math.random() >= 0.5 ? node.x * 0.1 : -node.x * 0.1;
+                    node.y += Math.random() >= 0.5 ? node.y * 0.1 : -node.y * 0.1;
+                }
+                updatedNodes[i] = node;
+            });
+            // just test if categories change will happen correctly
+            categories = ['kat1', 'kat2', 'kat3'];
+        } else {
+            try {
+                const time2 = process.hrtime();
+                const res = await fetch(`http://${pythonApi}:8000/nodes`, {
+                    method: 'POST',
+                    header: { 'Content-type': 'application/json' },
+                    body: JSON.stringify({ nodes }),
+                });
+                // there are only nodes comming back from here
+                const result = await res.json();
+                updatedNodes = result.nodes;
+                // TODO build
+                categories = data.categories;
+                const diff2 = process.hrtime(time2);
+                console.log(`getNodesFromPython took ${diff2[0] + diff2[1] / 1e9} seconds`);
+            } catch (err) {
+                console.error('error - get nodes from python - error');
+                console.error(err);
+            }
+        }
+
+        // build labels - labels are scanned on serverside
+        const labels = categories ? buildLabels(categories, nodes) : undefined;
+
+        // if new categories comes from server than send new labels back
+        // TODO NAMING categories suits mutch bedder maybe?
+        if (labels) socket.emit('updateLabels', labels);
+
+        socket.emit('updateEmbedding', { nodes: updatedNodes }, (confirm) => {
+            console.log(confirm);
+        });
+    });
+
+    socket.on('getNodes', async (data) => {
         console.log('updateNodes from client');
         // console.log(typeof data)
         // console.log(data)
@@ -224,15 +287,15 @@ io.sockets.on('connection', (socket) => {
         let categories = [];
 
         // build tripel from data
-        console.log('buildTripel');
-        const tripel = buildTripel(updatedNodes);
+        // console.log('buildTripel');
+        // const tripel = buildTripel(updatedNodes);
         // console.log({ tripel });
-        if (tripel) console.log(tripel);
+        // if (tripel) console.log(tripel);
 
 
         // before they should be cleaned and compared with maybe old data
         const time = process.hrtime();
-        updatedNodes = compareAndClean(nodesStore, updatedNodes);
+        updatedNodes = compareAndClean({}, updatedNodes);
         const diff = process.hrtime(time);
         console.log(`CopareAndClean took ${diff[0] + diff[1] / 1e9} seconds`);
 
@@ -260,7 +323,7 @@ io.sockets.on('connection', (socket) => {
                     header: { 'Content-type': 'application/json' },
                     body: JSON.stringify({
                         nodes: updatedNodes,
-                        tripel,
+                        // tripel,
                     }),
                 });
                 // there are only nodes comming back from here
@@ -282,7 +345,7 @@ io.sockets.on('connection', (socket) => {
         // labels
         if (process.env.NODE_ENV === 'development') {
             const n = categories.length;
-            Object.values(nodes).forEach(node => {
+            Object.values(nodes).forEach((node) => {
                 node.labels = [];
                 for (let i = 0; i < n; i++) node.labels.push(Math.random() >= 0.5 ? `${categories[i]}_label_${i}` : null);
             });
@@ -294,13 +357,10 @@ io.sockets.on('connection', (socket) => {
 
 
         // store data data for comparing later
-        nodesStore = nodes;
+        // nodesStore = nodes;
         // console.log("this nodes are stored")
         // console.log(nodesStore)
 
-        // if (process.env.NODE_ENV === 'development' && clusterStore) {
-        //     nodes = clusterStore;
-        // } else {
         // add default cluster value (max cluster/zooming)
         Object.values(nodes).forEach(node => node.cluster = nodeDataLength);
 
@@ -316,8 +376,8 @@ io.sockets.on('connection', (socket) => {
                 return point;
             });
 
-            // const kdtree = kdbush(points, n => n.x, n => n.y)
-            // console.log("finish kdtree")
+        //const kdtree = kdbush(points, n => n.x, n => n.y)
+        //console.log("finish kdtree")
 
             // const smallBox = kdtree.range(-3, -3, 3, 3)//.map(id => nodes[id])
             // console.log(smallBox)
@@ -327,12 +387,12 @@ io.sockets.on('connection', (socket) => {
 
         const zoomStages = 20;
         const nodesPerStage = Math.round(nodeDataLength / zoomStages) || 1; // small #nodes can result to 0
-        for (let i = 1; i <= nodeDataLength; i += nodesPerStage) {
-            hcCluster.clusters(i).forEach((cluster, i) => {
-                const agentId = cluster[0].id;
-                // the user can change the amount of clusters
+        // loop trough the zoomstages
+        for (let i = nodesPerStage; i <= nodeDataLength; i += nodesPerStage) {
+            hcCluster.clusters(i).forEach((cluster) => {
+                // TODO why the first one? this is realy bad!
+                const agentId = cluster[0].id; // first value in cluster is represent
                 if (nodes[agentId].cluster > i) nodes[agentId].cluster = i;
-                // console.log(`${i}. first items has id: ${clust[0].id}`)
             });
             console.log(`Building ${i} clusters finished`);
         }
@@ -342,6 +402,29 @@ io.sockets.on('connection', (socket) => {
         console.log(`end clustering: ${diffCluster[0] + diffCluster[1] / 1e9} seconds`);
         // clusterStore = nodes;
         // }
+
+        /*
+            CLUSTERING - kmeans performance test
+         */
+        const points2 = Object.values(nodes)
+            .map((n, i) => {
+                const point = [n.x, n.y]; // array with properties is ugly!
+                return point;
+            });
+
+        console.log('start clustering kmeans');
+        console.time('cluster kmeans')
+        const timeCluster2 = process.hrtime();
+
+
+
+        const cluster2 = clusterfck.kmeans(points2, 20);
+
+
+
+        const diffCluster2 = process.hrtime(timeCluster2);
+        console.timeEnd('cluster kmeans')
+        console.log(`end clustering kmeans: ${diffCluster2[0] + (diffCluster2[1] / 1e9)} seconds`);
 
 
         /*
@@ -412,8 +495,6 @@ io.sockets.on('connection', (socket) => {
                     break;
                 }
             }
-
-
 
 
             // TODO das muss noch implementiert werden

@@ -361,6 +361,9 @@ io.sockets.on('connection', (socket) => {
         // console.log("this nodes are stored")
         // console.log(nodesStore)
 
+        // if (process.env.NODE_ENV === 'development' && clusterStore) {
+        //     nodes = clusterStore;
+        // } else {
         // add default cluster value (max cluster/zooming)
         Object.values(nodes).forEach(node => node.cluster = nodeDataLength);
 

@@ -4,14 +4,14 @@ import pandas as pd
 import deepdish as dd
 import torch
 
-from communication import make_nodes
-from train import initialize_embedder, compute_embedding
-from model import MapNet
+from .communication import make_nodes
+from .train import initialize_embedder, compute_embedding
+from .model import MapNet
 
 
-info_file = '/export/home/kschwarz/Documents/Masters/wikiart/datasets/info_artist_49_multilabel_test.hdf5'
+info_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5'
 # feature_file = 'features/NarrowNet128_MobileNetV2_info_artist_49_multilabel_test.hdf5'
-feature_file = 'features/MobileNetV2_info_artist_49_multilabel_test.hdf5'
+feature_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/evaluation/pretrained_features/NarrowNet512_MobileNetV2_info_elgammal_subset_test_artist_genre.hdf5'
 weight_file = 'runs/embedder/models/TEST_MapNet_embedder.pth.tar'
 
 info_file_shape = '/export/home/kschwarz/Documents/Data/Geometric_Shapes/labels.hdf5'
@@ -89,10 +89,18 @@ def initialize(dataset='wikiart', **kwargs):   #(info_file, feature_file, weight
         id = data['image_id']
         categories = sorted(['content', 'emotion', 'media'])
         ft_id, feature = load_feature(feature_file_bam)
+    elif dataset == 'wikiart_elgammal':
+        data = dd.io.load(info_file)['df']
+        id = data['image_id']
+        categories = sorted(['artist_name', 'style', 'genre', 'media', 'century'])
+        ft_id, feature = load_feature(feature_file)
 
     else:
         data = dd.io.load(info_file)['df']
         id = data['image_id']
+        valid_idcs = data[['artist_name', 'genre']].dropna().index
+        data = data.loc[valid_idcs]
+        data.index = range(len(data))
         categories = sorted(['artist_name', 'style', 'genre', 'technique', 'century'])
         ft_id, feature = load_feature(feature_file)
 

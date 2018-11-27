@@ -14,10 +14,9 @@ import json
 import time, threading
 import requests
 from random import uniform
-sys.path.append('MapNetCode')
-from initialization import initialize
-from communication import make_nodes, read_nodes
-from train import train, get_modified, get_neighborhood, \
+from MapNetCode.initialization import initialize
+from MapNetCode.communication import make_nodes, read_nodes
+from MapNetCode.train import train, get_modified, get_neighborhood, \
     mutual_k_nearest_neighbors, svm_k_nearest_neighbors, \
     listed_k_nearest_neighbors, score_k_nearest_neighbors, \
     reset, select_neighbors
@@ -29,7 +28,7 @@ dataset_info = None
 net = None
 experiment_id = 'TEST'#time.strftime('%m-%d-%H-%M') + '_dropout'
 N = None
-dataset = 'bam'            # ['shape', 'wikiart', 'office', 'bam']
+dataset = 'wikiart_elgammal'            # ['shape', 'wikiart', 'office', 'bam']
 _neighbors = {'positive': [], 'negative': []}
 
 StartTime = time.time()
@@ -159,6 +158,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                index=True)
             categories = dataset_info['categories']
             data = {'nodes': nodes, 'categories': categories}
+
+            print(nodes)
 
             # make json
             data = json.dumps(data).encode()

@@ -18,7 +18,7 @@ import torch.nn as nn
 import copy
 from losses import TripletLoss, ExemplarTripletSelector, TripletSelector, select_semihard, select_hardest, select_random
 
-sys.path.append('../../TSNENet')
+sys.path.append('/export/home/kschwarz/Documents/Masters/TSNENet')
 from loss import TSNELoss
 from dataset import IndexDataset
 
@@ -31,7 +31,7 @@ mpl.use('TkAgg')
 #     BinaryTripletSelector, SemihardNegativeTripletSelector
 
 
-sys.path.append('../../FullPipeline')
+sys.path.append('/export/home/kschwarz/Documents/Masters/FullPipeline')
 import matplotlib.pyplot as plt
 from aux import AverageMeter, TBPlotter, save_checkpoint, write_config, load_weights
 

@@ -118,8 +118,12 @@ def train_embedder(embedder, feature, lr=1e-3, batch_size=100, experiment_id=Non
                               use_cuda=use_cuda)
     noise_criterion = NormalizedMSE()
     print('Compute beta for KL-Loss...')
-    train_criterion._compute_beta(torch.from_numpy(feature[idx_train]).cuda())
-    test_criterion._compute_beta(torch.from_numpy(feature[idx_test]).cuda())
+    if use_cuda:
+        train_criterion._compute_beta(torch.from_numpy(feature[idx_train]).cuda())
+        test_criterion._compute_beta(torch.from_numpy(feature[idx_test]).cuda())
+    else:
+        train_criterion._compute_beta(torch.from_numpy(feature[idx_train]))
+        test_criterion._compute_beta(torch.from_numpy(feature[idx_test]))
     print('done...')
 
     log_interval = 10

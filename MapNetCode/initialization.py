@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import deepdish as dd
 import torch
+from umap import UMAP
+
 
 from .communication import make_nodes
 from .train import initialize_embedder, compute_embedding
@@ -10,9 +12,9 @@ from .model import MapNet
 
 
 info_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5'
-# feature_file = 'features/NarrowNet128_MobileNetV2_info_artist_49_multilabel_test.hdf5'
-feature_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/evaluation/pretrained_features/NarrowNet512_MobileNetV2_info_elgammal_subset_test_artist_genre.hdf5'
-weight_file = 'runs/embedder/models/TEST_MapNet_embedder.pth.tar'
+# feature_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/features/NarrowNet128_MobileNetV2_info_artist_49_multilabel_test.hdf5'
+feature_file = '/export/home/kschwarz/Documents/Masters/WebInterface/MapNetCode/evaluation/pretrained_features/NarrowNet512_MobileNetV2_info_elgammal_subset_test_genre.hdf5'
+weight_file = None#'runs/embedder/models/TEST_MapNet_embedder.pth.tar'
 
 info_file_shape = '/export/home/kschwarz/Documents/Data/Geometric_Shapes/labels.hdf5'
 feature_file_shape = 'features/ShapeDataset_NarrowNet128_MobileNetV2_test.hdf5'
@@ -91,16 +93,21 @@ def initialize(dataset='wikiart', **kwargs):   #(info_file, feature_file, weight
         ft_id, feature = load_feature(feature_file_bam)
     elif dataset == 'wikiart_elgammal':
         data = dd.io.load(info_file)['df']
-        id = data['image_id']
-        categories = sorted(['artist_name', 'style', 'genre', 'media', 'century'])
-        ft_id, feature = load_feature(feature_file)
-
-    else:
-        data = dd.io.load(info_file)['df']
-        id = data['image_id']
         valid_idcs = data[['artist_name', 'genre']].dropna().index
         data = data.loc[valid_idcs]
         data.index = range(len(data))
+        id = data['image_id']
+        data['style'][data['style'].isnull()] = None
+        data['media'][data['media'].isnull()] = None
+        data['century'][data['century'].isnull()] = None
+        categories = sorted(['artist_name', 'genre'])#''style', 'genre', 'media', 'century'])
+        ft_id, feature = load_feature(feature_file)
+        ft_id = ft_id[valid_idcs]
+        feature = feature[valid_idcs]
+    else:
+        data = dd.io.load(info_file)['df']
+        id = data['image_id']
+
         categories = sorted(['artist_name', 'style', 'genre', 'technique', 'century'])
         ft_id, feature = load_feature(feature_file)
 
@@ -112,17 +119,28 @@ def initialize(dataset='wikiart', **kwargs):   #(info_file, feature_file, weight
         raise ValueError('Image IDs in feature file do not match IDs in info file.')
     del ft_id
 
-    # initialize the network
+    # # initialize the network
     net = MapNet(feature_dim=feature.shape[1], output_dim=2)
-    if dataset == 'shape':
-        initialize_embedder(net.embedder, weight_file_shape, feature, **kwargs)
-    elif dataset == 'office':
-        initialize_embedder(net.embedder, weight_file_office, feature, **kwargs)
-    elif dataset == 'bam':
-        initialize_embedder(net.embedder, weight_file_bam, feature, **kwargs)
+    # if dataset == 'shape':
+    #     initialize_embedder(net.embedder, weight_file_shape, feature, **kwargs)
+    # elif dataset == 'office':
+    #     initialize_embedder(net.embedder, weight_file_office, feature, **kwargs)
+    # elif dataset == 'bam':
+    #     initialize_embedder(net.embedder, weight_file_bam, feature, **kwargs)
+    # else:
+    #     initialize_embedder(net.embedder, weight_file, feature, **kwargs)
+    # embedding = compute_embedding(net.embedder, feature)
+    # compute umap embedding
+    proj_path = 'projections'
+    if not os.path.isdir(proj_path):
+        os.makedirs(proj_path)
+    proj_file = os.path.join(proj_path, feature_file.split('/')[-1].replace('.hdf5', '_minspace.npy'))
+    if not os.path.isfile(proj_file):
+        projector = UMAP(n_neighbors=30, min_dist=0.25)
+        embedding = projector.fit_transform(feature)
+        np.save(proj_file, embedding)
     else:
-        initialize_embedder(net.embedder, weight_file, feature, **kwargs)
-    embedding = compute_embedding(net.embedder, feature)
+        embedding = np.load(proj_file)
 
     data = {
         'name': id,

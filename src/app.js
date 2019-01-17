@@ -64,7 +64,7 @@ if (process.env.NODE_ENV === 'development') {
     imgPath = `${__dirname}/../images/2582_sub_wikiarts/`;
     // imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
 } else {
-    imgPath = '/export/home/kschwarz/Documents/Data/Wikiart_artist49_images/';
+    imgPath = '/export/home/kschwarz/Documents/Data/Wikiart_Elgammal/';
 }
 
 if (process.env.NODE_ENV === 'development') {

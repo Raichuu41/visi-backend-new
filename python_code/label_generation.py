@@ -17,7 +17,7 @@ def svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs=None, k=-1, ve
     if negative_idcs is None:
         negative_idcs = []
 
-    unlabeled_idcs = np.setdiff1d(range(len(vectors)), np.union(positive_idcs, negative_idcs))
+    unlabeled_idcs = np.setdiff1d(range(len(vectors)), np.union1d(positive_idcs, negative_idcs))
 
     N_positive = len(positive_idcs)
     N_negative = len(negative_idcs)

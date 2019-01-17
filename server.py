@@ -16,6 +16,7 @@ import requests
 from random import uniform
 import python_code.initialization as init
 import python_code.communication as communication
+from python_code.label_generation import svm_k_nearest_neighbors
 from python_code.aux import scale_to_range
 import pickle
 
@@ -31,10 +32,10 @@ initial_data, initial_data_info = init.get_data(dataset_name=dataset_name, impat
                                                 normalization_file=None, info_file=data_info_file,
                                                 feature_dim=feature_dim)
 print('Done.')
-dataframe = None
+graph_df = None
+index_to_id = None
 net = None
 experiment_id = 'TEST'#'{}_{}'.format(time.strftime('%m-%d-%H-%M'), dataset_name)
-
 StartTime = time.time()
 
 
@@ -132,7 +133,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt in zum konvertieren weiter
 
         """
-        global dataframe
+        global graph_df, index_to_id
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -158,6 +159,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                    coordinate_range=limits)
 
             graph_json = communication.graph_df_to_json(graph_df, max_elements=max_display)
+            index_to_id = communication.make_index_to_id_dict(graph_json)
+
             self.wfile.write(graph_json)  #body zurueckschicken
             # print(graph_json)
 
@@ -182,7 +185,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # p, n = katja_function(data.p, data.n)
 
             # make json
-            # data = json.dumps({p: p, n: n}).encode()
+            # data = json.dumps({'p': p, 'n': n}).encode()
+            data = json.dumps(data).encode()
             self.wfile.write(data)  #body zurueckschicken
 
         if self.path == "/stopSvm":
@@ -246,16 +250,33 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             data = json.loads(str(body).decode('utf-8'))  # python 2
             # data = json.loads(str(body, encoding='utf-8'))      # python 3
 
-            print(data)
+            group_id = data['group_id']
+            if 'negatives' not in data.keys():          # first iteration
+                data['negatives'] = []
 
+            # save the created labels
+            graph_df.loc[map(lambda x: index_to_id[x], data['positives']), 'group'] = group_id
+            graph_df.loc[map(lambda x: index_to_id[x], data['negatives']), 'group'] = -group_id
 
+            # only operate on data displayed in interface
+            displayed_idcs = map(initial_data['image_id'].index, index_to_id.values())
+            vectors = np.stack(map(lambda x: id_to_feature[x], displayed_ids))
+            # map positive_idcs and negative_idcs to displayed_idcs indexing
+            positive_idcs = map(displayed_idcs.index, positive_idcs)
+            negative_idcs = map(displayed_idcs.index, negative_idcs)
 
-            # # make json
-            # data['neighbours'] = {neigh: score for neigh, score in zip(_neighbors['positive'], scores)}
-            # print(len(data['positives']))
-            data['group'] = list(data['positives'])
-            data = json.dumps(data).encode()
-            self.wfile.write(data)  #body zurueckschicken
+            neighbors, scores = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs, k=-1, verbose=False)
+
+            neighbors = map(lambda x: displayed_idcs[x], neighbors)                 # revert displayed_idcs indexing
+            # convert back to json indexing
+            id_to_index = dict(zip(index_to_id.values(), index_to_id.keys()))
+            neighbors = map(lambda x: id_to_index[initial_data['image_id'][x]], neighbors)
+
+            # make json
+            return_dict = {'group': data['positives'],
+                           'neighbours': dict(zip(neighbors, scores))}
+            return_dict = json.dumps(return_dict).encode()
+            self.wfile.write(return_dict)  #body zurueckschicken
 
         if self.path == "/startUpdateEmbedding":
             print("post /startUpdateEmbedding")

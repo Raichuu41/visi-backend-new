@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 import deepdish as dd
 import warnings
 
-from helpers import IndexDataset
+from helpers import IndexDataset, PartiallyLabeledBatchSampler
 from aux import AverageMeter, TBPlotter, load_weights
 from loss import TSNEWrapper, TSNEWrapperMapNet, TripletLossWrapper, TripletSelector, select_semihard
 from model import MapNet
@@ -174,7 +174,7 @@ def train_embedder(embedder, features, lr=1e-3, batch_size=2000, random_state=12
         os.makedirs(os.path.dirname(outpath))
 
     if log_dir is not None:
-        logger = TBPlotter(logdir_mapnet)
+        logger = TBPlotter(log_dir)
         logger.print_logdir()
     else:
         logger = None
@@ -229,8 +229,12 @@ def train_embedder(embedder, features, lr=1e-3, batch_size=2000, random_state=12
     print('Finished training embedder with best loss: {:.4f} from epoch {}'.format(best_loss, best_epoch))
 
 
-def train_mapnet(model, features, labels, weights=None, lr=1e-3, batch_size=2000, random_state=123, use_gpu=True,
+def train_mapnet(model, features, labels, weights=None, lr=1e-3,
+                 batch_size=2000, batch_frac_labeled=0.7,
+                 random_state=123, use_gpu=True,
                  verbose=False, outpath=None, log_dir=None, max_epochs=float('inf')):
+    if not isinstance(labels, torch.LongTensor):
+        labels = torch.LongTensor(labels)
     def eval_fn(input):
         fts = model.mapping.forward(input)
         fts = fts / fts.norm(dim=1, keepdim=True)
@@ -247,10 +251,17 @@ def train_mapnet(model, features, labels, weights=None, lr=1e-3, batch_size=2000
     else:
         logger = None
 
-    loader_kwargs = {'num_workers': 4, 'drop_last': True} if use_gpu else {'drop_last': True}
+    loader_kwargs = {'num_workers': 4} if use_gpu else {}
 
-    trainloader = DataLoader(IndexDataset(features), batch_size=batch_size, shuffle=True,
+    N_unlabeled_total = batch_size
+    classweights = {l: 1./3 if l < 0 else 2./3 for l in set(labels.numpy()) if l != 0}      # 2/3 positive labeled, 1/3 class specific negatives
+    batchsampler = PartiallyLabeledBatchSampler(labels, frac_labeled=batch_frac_labeled, batch_size=batch_size,
+                                                N_unlabeled_total=N_unlabeled_total, classweights=classweights)
+    trainloader = DataLoader(IndexDataset(features), batch_sampler=batchsampler,
                              **loader_kwargs)
+    # trainloader = DataLoader(IndexDataset(features), batch_size=batch_size, shuffle=True,
+    #                          **loader_kwargs)
+
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, threshold=1e-3,

@@ -8,6 +8,7 @@ from aux import scale_to_range
 def make_graph_df(image_ids, projection, info_df=None, coordinate_range=(-1, 1)):
     coordinates = scale_to_range(projection, coordinate_range[0], coordinate_range[1])
     df = pd.DataFrame(data=coordinates, index=image_ids, columns=('x', 'y'))
+    df['group'] = None
     if info_df is not None:
         df = pd.concat([df, info_df], axis=1, join_axes=[df.index])     # add available information to images with existing coordinates
     return df
@@ -36,3 +37,10 @@ def graph_df_to_json(graph_df, max_elements=None, random_state=123):
     # encode to json
     data = {'nodes': converted_graph, 'categories': categories}
     return json.dumps(data).encode()
+
+
+def make_index_to_id_dict(json_graph):
+    graph = json.loads(json_graph)['nodes']
+    index_id = map(lambda x: (x['index'], x['name']), graph.values())
+    return dict(index_id)
+

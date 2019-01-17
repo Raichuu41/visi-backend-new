@@ -6,7 +6,6 @@ import cors from 'cors';
 import express from 'express';
 import socketIo from 'socket.io';
 import clusterfck from 'tayden-clusterfck';
-import exampleNodes from '../mock/2582_sub_wikiarts';
 import { compareAndClean } from './util/compareAndClean';
 import { getRandomColor } from './util/getRandomColor';
 import pythonRoute from './routes/python/index';
@@ -24,13 +23,7 @@ import { buildLabels } from './util/buildLabels';
 // import { dataSet } from './config/datasets';
 // import kdbush from 'kdbush';
 // const kde2d = require('@stdlib/stdlib/lib/node_modules/@stdlib/stats/kde2d');
-import {pythonApi} from "./config/env";
-import buildLabels from "./util/buildLabels";
-
-const express = require('express');
-const fs = require('fs');
-
-const kde2d = require('@stdlib/stdlib/lib/node_modules/@stdlib/stats/kde2d');
+const exampleNodes = (process.env.NODE_ENV === 'development') ? require('../mock/2582_sub_wikiarts').default : {};
 
 // const path = require('path');
 // required for file serving
@@ -69,12 +62,9 @@ let imgPath = '';
 
 if (process.env.NODE_ENV === 'development') {
     imgPath = `${__dirname}/../images/2582_sub_wikiarts/`;
-//     imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
+    // imgPath = `/export/home/kschwarz/Documents/Data/CUB_200_2011/images_nofolders/`;
 } else {
     imgPath = '/export/home/kschwarz/Documents/Data/Wikiart_artist49_images/';
-//    imgPath = '/export/home/kschwarz/Documents/Data/Geometric_Shapes/images/';
-//    imgPath = '/export/home/kschwarz/Documents/Data/OfficeHomeDataset_10072016/';
-//    imgPath = '/export/home/kschwarz/Documents/Data/BAM/';
 }
 
 if (process.env.NODE_ENV === 'development') {
@@ -85,6 +75,7 @@ if (process.env.NODE_ENV === 'development') {
 
     console.time('fillImgDataCach');
     console.log(`fillImgDataCach of ${mockDataLength} files`);
+    console.log(exampleNodes)
 
     // generate dummy nodes
     for (let n = 0; n < mockDataLength; n += 1) {
@@ -149,7 +140,6 @@ app.use(cors());
 
 // console.log(process.env.NODE_ENV === 'development')
 
-app.use('/', express.static('public'));
 
 // app.use('/api/v1/users', users)
 // TODO add python in route name and change frontend usage
@@ -157,6 +147,7 @@ app.use('/api/v1/', pythonRoute);
 app.use('/api/v1/svm/', svmRoute);
 app.use('/api/v1/dataset/', dataset);
 app.use('/api', express.static('images'));
+app.use('/', express.static('public'));
 /* app.get('/images/!*', (req, res) => {
     console.log(req.path)
     res.send()
@@ -361,9 +352,6 @@ io.sockets.on('connection', (socket) => {
         // console.log("this nodes are stored")
         // console.log(nodesStore)
 
-        // if (process.env.NODE_ENV === 'development' && clusterStore) {
-        //     nodes = clusterStore;
-        // } else {
         // add default cluster value (max cluster/zooming)
         Object.values(nodes).forEach(node => node.cluster = nodeDataLength);
 

@@ -1,0 +1,3 @@
+retrain_features.py
+
+python retrain_features.py --weight_file ../SmallNets/runs/multilabel/06-24-15-14_OctopusNet_model_best.pth.tar --classes style --label_file largest_4_styles_labelfile.pkl --device=0 --exp_name largest_4_styles --use_triplets

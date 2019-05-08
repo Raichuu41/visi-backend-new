@@ -6,6 +6,7 @@ from PIL import Image
 from torch.utils.data import BatchSampler, WeightedRandomSampler
 import math
 from collections import Counter
+from glob import glob
 
 
 def is_imfile(filename, extensions=('.jpg', '.png')):
@@ -19,21 +20,70 @@ def get_imgid(filename):
     return filename.split('/')[-1].split('.')[0]
 
 
+def make_single_folder(dir, outdir, use_root=True, sourcefile=None):
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+
+    if sourcefile is not None and os.path.isfile(sourcefile):
+        sources = []
+        with open(sourcefile, 'r') as f:
+            for line in f:
+                sources.append(line.strip())
+        sources = [src for src in sources if len(src) > 0]
+
+        n_chunks = 1000
+        chunksize = int(np.ceil(len(sources) * 1.0 / n_chunks))
+        sources = [sources[i:i + chunksize] for i in xrange(0, len(sources), chunksize)]
+    else:
+        sources = []
+        for root, _, files in os.walk(os.path.abspath(dir)):
+            print(root)
+            sources.append(map(lambda x: os.path.join(root, x), files))
+        sources = [src for src in sources if len(src) > 0]
+
+        if sourcefile is not None:
+            with open(sourcefile, 'w') as f:
+                for src in sources:
+                    f.write('\n'.join(src))
+                    f.write('\n\n')
+
+    replace_dir = dir if dir.endswith('/') else dir + '/'
+    if use_root:
+        map_fn = lambda x: '_'.join(x.replace(replace_dir, '').split('/'))
+    else:
+        map_fn = lambda x: x.split('/')[-1]
+
+    for i, src in enumerate(sources):
+        print('{}/{}'.format(i, len(sources)))
+        dst = map(map_fn, src)
+        dst = map(lambda x: os.path.join(outdir, x), dst)
+        valid = np.array(map(os.path.isfile, dst)).__invert__()
+        if not any(valid):
+            continue
+        src = np.array(src)[valid]
+        dst = np.array(dst)[valid]
+        map(lambda s, d: os.symlink(s, d), src, dst)
+
+
 class ImageDataset(Dataset):
     """Dataset with images only, i.e. no labels.
     Returns PIL images."""
-    def __init__(self, impath, extensions=('.jpg', '.png'), transform=None):
+    def __init__(self, impath, extensions=('.jpg', '.png'), image_ids=None, transform=None):
         super(ImageDataset, self).__init__()
         self.impath = impath
         self.extensions = extensions
+        self.image_ids = image_ids
         self.transform = transform
         self.filenames = self.get_valid_images()
 
     def get_valid_images(self):
-        all_files = os.listdir(self.impath)
+        all_files = np.array(os.listdir(self.impath))
+        if self.image_ids is not None:
+            image_selection = np.stack(map(lambda x: [x + ext for ext in self.extensions], self.image_ids)).flatten()
+            all_files = all_files[np.isin(all_files, image_selection)]
         mapfunc = lambda f: is_imfile(f, extensions=self.extensions)
         is_valid = map(mapfunc, all_files)
-        return np.array(all_files)[is_valid]
+        return all_files[is_valid]
 
     def __len__(self):
         return len(self.filenames)
@@ -62,6 +112,9 @@ class IndexDataset(Dataset):
 
     def __getitem__(self, index):
         data = self.data[index]
+        if isinstance(data, tuple):         # in case data is img, label
+            data = data[0]
+            # print(data[1])
         if self.transform:
             data = self.transform(data)
         return data, index
@@ -216,7 +269,7 @@ class PartiallyLabeledBatchSampler(BatchSampler):
 
         self.frac_labeled = frac_labeled
         self.batch_size = batch_size
-        self.N_unlabeled_total = N_unlabeled_total
+        self.N_unlabeled_total = min(self.N_unlabeled, N_unlabeled_total)
 
         self.N_labeled_batch = min(self.N_labeled, int(math.ceil(self.frac_labeled * self.batch_size)))
         self.N_unlabeled_batch = min(self.N_unlabeled, self.batch_size - self.N_labeled_batch)
@@ -236,8 +289,8 @@ class PartiallyLabeledBatchSampler(BatchSampler):
         self.count = 0
 
     def __len__(self):
-        N_from_labeled = int(math.ceil(self.N_labeled * 1.0 / self.N_labeled_batch))
-        N_from_unlabeled_total = int(math.ceil(self.N_unlabeled_total * 1.0 / self.N_unlabeled_batch))
+        N_from_labeled = 0 if self.N_labeled == 0 else int(math.ceil(self.N_labeled * 1.0 / self.N_labeled_batch))
+        N_from_unlabeled_total = 0 if self.N_unlabeled_total == 0 else int(math.ceil(self.N_unlabeled_total * 1.0 / self.N_unlabeled_batch))
         return max(N_from_labeled, N_from_unlabeled_total)
 
     def __iter__(self):

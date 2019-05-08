@@ -2,3 +2,14 @@ node_modules/*
 images/*
 .idea
 /dist
+**/*.pyc
+**/*.npy
+**/*.pkl
+**/*.h5
+**/*.hdf5
+**/*.pth.tar
+MapNetCode/evaluation
+MapNetCode/runs
+icons/**
+python_code/.log
+python_code/*automated_runs

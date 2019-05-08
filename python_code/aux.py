@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 import torch
 import shutil
 import h5py
@@ -7,24 +8,28 @@ from PIL import Image
 from math import ceil
 import numpy as np
 import matplotlib as mpl
-mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as patches
-import matplotlib as mpl
 import random
+import stat
 import time
 
 
 class TBPlotter(object):
     """Log values in tensorboard interface."""
-    def __init__(self, logdir='runs/tensorboard'):
+    def __init__(self, logdir='runs/tensorboard', overwrite=True):
         super(TBPlotter, self).__init__()
         if not os.path.isdir(logdir):
             os.makedirs(logdir)
+        train_dir = os.path.join(logdir, 'train')
+        test_dir = os.path.join(logdir, 'test')
+        if overwrite:
+            for rundir in [train_dir, test_dir]:
+                shutil.rmtree(os.path.join(rundir), ignore_errors=True)
         self.logdir = logdir
-        self.train_writer = SummaryWriter(os.path.join(logdir, 'train'))
-        self.test_writer = SummaryWriter(os.path.join(logdir, 'test'))
+        self.train_writer = SummaryWriter(train_dir)
+        self.test_writer = SummaryWriter(test_dir)
 
     def print_logdir(self):
         print('\033[95mtensorboard:\ntensorboard --logdir={}\033[0m'
@@ -55,6 +60,159 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+class SHWriter(object):
+    def __init__(self, prefix, verbose=False):
+        self.prefix = prefix
+        self.args = {}
+        self.verbose = verbose
+
+    def set_args(self, **kwargs):
+        self.args = kwargs
+
+    def add_args(self, **kwargs):
+        self.args.update(**kwargs)
+
+    @staticmethod
+    def make_executable(filename):
+        st = os.stat(filename)
+        os.chmod(filename, st.st_mode | stat.S_IEXEC)
+
+    def write_sh(self, outfile, mode='w'):
+        argstring = []
+        for k, v in self.args.items():
+            if not isinstance(v, str):
+                if hasattr(v, '__iter__'):
+                    v = ' '.join(str(vv) for vv in v)
+                elif isinstance(v, bool):
+                    if not v:
+                        continue
+                    v = ''
+            argstring.append('--{} {}'.format(str(k), str(v)))
+        argstring = ' '.join(argstring)
+
+        with open(outfile, mode) as f:
+            f.write('{} {}\n'.format(self.prefix, argstring))
+
+        self.make_executable(outfile)
+        if self.verbose:
+            print('Saved {}.'.format(outfile))
+
+
+class TexPlotter(object):
+    def __init__(self, preamble_file=None, figsize=None):
+        if preamble_file is not None:
+            self.set_preamble(preamble_file)
+
+        self.figsize = (3, 3.1756) if figsize is None else figsize          # height, width
+
+    @staticmethod
+    def load_preamble(preamble_file, commands_file=None):
+        with open(preamble_file, 'r') as f:
+            file_data = f.readlines()
+
+        for l in file_data:
+            l.replace('utf8', 'utf8x')  # Some bug Johann told be about
+
+        if commands_file is not None:
+            with open(commands_file, 'r') as f:
+                file_data += f.readlines()
+
+        return file_data
+
+    def set_preamble(self, preamble_file='/export/home/kschwarz/Documents/Masters/Thesis/mpl_preamble.tex'):
+        preamble = self.load_preamble(preamble_file)
+
+        latex_custom_preamble = {
+            "font.family": "serif",  # use serif/main font for text elements
+            # "text.usetex": True,          # use inline math for ticks
+            "text.usetex": False,  # use inline math for ticks
+            "pgf.rcfonts": False,
+            "text.latex.preamble": preamble,
+            "pgf.preamble": preamble,
+            "pgf.texsystem": "pdflatex",
+            'hatch.linewidth': 10.,
+            'hatch.color': 'w',
+            'legend.fontsize': "small",
+            'legend.handletextpad': 0.1
+        }
+
+        mpl.rcParams.update(latex_custom_preamble)
+
+        return preamble
+
+    @staticmethod
+    def get_doc_lengths(path_to_log_file):
+        # Fill with default values
+        lengths_backup = {'columnwidth': 3.1756,
+                          'linewidth': 3.1756,
+                          'textwidth': 6.48955}
+        try:
+            with open(path_to_log_file, 'r') as log:
+                lines = log.readlines()
+
+                lengths = {}
+                for l in lines:
+                    if '___' in l:
+                        name, length = l.split('=')
+                        name = name.strip('_').lower()
+                        length = length[:-3]
+                        lengths[name] = float(length)
+
+        except Exception:
+            print('Could not load thesis.log file')
+            lengths = lengths_backup
+
+        if lengths == {}:
+            print('Lengths was empty. Did you include "print_lengths.tex"?')
+            ### PRINT_LENGTHS.tex
+            # \usepackage {layouts}
+            # \usepackage {xprintlen}
+            # \usepackage {xparse}
+            # \ExplSyntaxOn
+            # % https: // tex.stackexchange.com / a / 123283 / 5764
+            # \DeclareExpandableDocumentCommand { \printlengthas} {m m}
+            #     { \dim_to_decimal_in_unit:nn {# 1} { 1 #2 } #2 }
+            # \ExplSyntaxOff
+            #
+            # \message{___TEXTWIDTH___ =\printlengthas{\textwidth}{ in}}
+            # \typeout{___LINEWIDTH___ =\printlengthas{\linewidth}{ in}}
+            # \typeout{___COLUMNWIDTH___ =\printlengthas{\columnwidth}{ in}}
+
+            lengths = lengths_backup
+
+        return lengths
+
+    def render(self, figure):
+        figure.set_size_inches((self.figsize[1], self.figsize[0]))          # set width, height
+
+    def save(self, figure, outfilename, **save_args):
+        self.render(figure)
+        bbox_extra_artists = np.concatenate([(ax.title, ax.legend_) for ax in figure.axes])
+        bbox_extra_artists = bbox_extra_artists[bbox_extra_artists != None]
+        plt.savefig(outfilename, bbox_extra_artists=bbox_extra_artists, bbox_inches='tight', **save_args)
+
+
+class TableWriter(object):
+    def __init__(self, df):
+        self.df = df.copy()
+
+    @staticmethod
+    def write_bold(string):
+        return r'\textbf{' + string + '}'
+
+    def write_latex_table(self, outfile, mode='w', is_best=None, **latex_kwargs):
+        if is_best is not None:
+            str_vals = self.df.values.astype('|S64').flatten()
+            is_best = is_best.flatten().astype(bool)
+            str_vals[is_best] = map(self.write_bold, str_vals[is_best])
+            df = pd.DataFrame(index=self.df.index, columns=self.df.columns, data=str_vals.reshape(self.df.values.shape))
+        else:
+            df = self.df
+
+        with open(outfile, mode) as f:
+            f.write(df.to_latex(**latex_kwargs))
 
 
 def write_config(args, exp_name, defaults=None, extras=None):
@@ -208,3 +366,71 @@ def load_weights(weightfile, state_dict_model, prefix_file='', prefix_model=''):
 
 def scale_to_range(x, a=0, b=1):
     return (b-a) * (x - x.min()) / (x.max() - x.min()) + a
+
+
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+
+def divide_for_iteration(number, n_iter):
+    n_per_iter = [int(number / n_iter)] * n_iter
+    for i in range(number % n_iter):
+        n_per_iter[i] += 1
+    return n_per_iter
+
+
+def find_n_false_in_a_row(n_false, bool_list):
+    """Returns start index of first n_false false entries."""
+    counter = 0
+    for idx, corr in enumerate(bool_list):
+        if not corr:
+            counter += 1
+        else:
+            counter = 0
+        if counter == n_false:
+            break
+    if counter != n_false:
+        return -1
+    return idx + 1 - n_false
+
+
+def find_n_false_total(n_false, bool_list):
+    """Returns index of n_false-th false element."""
+    counter = 0
+    for idx, corr in enumerate(bool_list):
+        if not corr:
+            counter += 1
+        if counter == n_false:
+            break
+    if counter != n_false:
+        return -1
+    return idx
+
+"""
+def find_free_filename(filename):
+    ext = ""
+    if "." in filename:
+        idx = filename.rfind(".")
+        ext = filename[idx:]
+        filename = filename[:idx]
+    for i in range(1000):
+        testname = "{}_{:03d}{}".format(filename, i, ext)
+        if not os.path.isfile(testname):
+            return testname
+    raise RuntimeError('No free filename found.')
+"""
+
+
+def find_free_filename(filename, counter=0):
+    if counter > 999:
+        raise RuntimeError('No free filename found.')
+    if '.' in filename:  # filename has file extension
+        testname = filename[::-1]   # invert filename to get extension point only
+        testname = testname.replace('.', '_{:03d}.'.format(counter)[::-1], 1)
+        testname = testname[::-1]   # re-invert filename
+    else:
+        testname = '{}_{:03d}'.format(filename, counter)
+    if not os.path.isfile(testname):
+        return testname
+    return find_free_filename(filename, counter+1)

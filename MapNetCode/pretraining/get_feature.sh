@@ -1,0 +1,15 @@
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_val.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_artist --weight_file models/10-15-10-46_NarrowNet512_VGG_no_artist_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_test.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_artist --weight_file models/10-15-10-46_NarrowNet512_VGG_no_artist_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_genre --weight_file models/10-15-10-47_NarrowNet512_VGG_no_genre_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_val.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_genre --weight_file models/10-15-10-47_NarrowNet512_VGG_no_genre_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_test.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_genre --weight_file models/10-15-10-47_NarrowNet512_VGG_no_genre_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_train.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_style --weight_file models/10-15-10-47_NarrowNet512_VGG_no_style_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_val.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_style --weight_file models/10-15-10-47_NarrowNet512_VGG_no_style_model_best.pth.tar
+
+python get_feature.py --info_file wikiart_datasets/info_elgammal_subset_test.hdf5 --im_path /export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224 --stat_file wikiart_datasets/info_elgammal_subset_train_mean_std.pkl --batch_size 16 --device 1 --feature_dim 512 --model vgg16_bn --exp_name no_style --weight_file models/10-15-10-47_NarrowNet512_VGG_no_style_model_best.pth.tar

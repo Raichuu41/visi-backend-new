@@ -1,0 +1,20 @@
+weight_file						../SmallNets/runs/multilabel/06-24-15-14_OctopusNet_model_best.pth.tar
+test_file						../wikiart/datasets/info_artist_49_multilabel_val.hdf5
+im_path						/export/home/kschwarz/Documents/Data/Wikiart_artist49_images
+batch_size						32
+epochs						100
+seed						123
+use_gpu						True
+device						2
+stat_file						../wikiart/datasets/info_artist_49_multilabel_train_mean_std.pkl
+n_labeled						[(u'impressionism', 441), (u'post-impressionism', 152), (None, 1520), (u'realism', 168), (u'surrealism', 143)]
+train_file						../wikiart/datasets/info_artist_49_multilabel_test.hdf5
+exp_name						largest_4_styles_sparse
+log_interval						10
+classes						['style']
+lr						0.001
+label_file						_user_labels_4_largest_styles_sparse.pkl
+chkpt						None
+model						mobilenet_v2
+momentum						0.9
+log_dir						runs/

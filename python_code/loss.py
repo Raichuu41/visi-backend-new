@@ -3,8 +3,9 @@ import torch
 import torch.nn.functional as F
 from itertools import combinations
 import numpy as np
-from faiss_master import faiss
+import faiss
 import warnings
+from copy import deepcopy
 
 from utils import _binary_search_perplexity
 from helpers import BalancedBatchSampler
@@ -181,6 +182,10 @@ class TripletLoss(nn.Module):
 
     def forward(self, feature, label, weights=None):
         N_batch = len(feature)
+
+        # normalize features
+        feature = feature / feature.norm(dim=1, keepdim=True)
+
         triplets, feature, label, weights = self.triplet_selector.get_triplets(feature, label, weights)
 
         if triplets is None:
@@ -219,7 +224,7 @@ class TripletSelector(object):
             idx_positives = torch.nonzero(label == lbl)
             if len(idx_positives) < 2:
                 continue
-            idx_negatives = torch.nonzero((label != lbl) * (label > 0) + (label == -lbl))
+            idx_negatives = torch.nonzero((label != lbl) * (label >= 0) + (label == -lbl))
 
             anchor_positives = torch.LongTensor(list(combinations(idx_positives, 2)))  # All anchor-positive pairs
             ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
@@ -298,3 +303,37 @@ class TripletLossWrapper(TripletLoss):
             warnings.warn('Did not find any positives in batch. No triplets formed.')
 
         return distance_loss
+
+
+class TripletLossWrapper_pretraining(TripletLoss):
+    def __init__(self, triplet_selector, data_labels, average=False):
+        super(TripletLossWrapper_pretraining, self).__init__(triplet_selector, average=average)
+        self.data_labels = data_labels
+
+    def forward(self, data, output):
+        features = output[0]
+        indices = data[1]
+        labels = torch.tensor(self.data_labels[indices])
+
+        distance_loss = super(TripletLossWrapper_pretraining, self).forward(features, labels)
+        return distance_loss
+
+
+class L1RegWrapper(nn.Module):
+    def __init__(self, model):
+        super(L1RegWrapper, self).__init__()
+        self.model = deepcopy(model)
+        self.l1_crit = nn.L1Loss(size_average=False)
+
+    def forward(self, data, output):
+        reg_loss = 0
+        for param in self.model.parameters():
+            target = torch.zeros(param.shape).type_as(param)
+            reg_loss += self.l1_crit(param, target)
+
+        return reg_loss
+
+    def __repr__(self):
+        return 'L1RegWrapper()'
+
+

@@ -1,0 +1,16 @@
+val_file						wikiart_datasets/info_artist_49_multilabel_val.hdf5
+batch_size						32
+epochs						100
+seed						123
+use_gpu						True
+exp_name						None
+device						1
+stat_file						wikiart_datasets/info_artist_49_multilabel_train_mean_std.pkl
+chkpt						None
+train_file						wikiart_datasets/info_artist_49_multilabel_train.hdf5
+log_interval						10
+lr						0.001
+log_dir						runs/
+im_path						/export/home/kschwarz/Documents/Data/Wikiart_artist49_images
+model						vgg16_bn
+momentum						0.9

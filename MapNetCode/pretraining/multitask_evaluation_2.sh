@@ -1,0 +1,8 @@
+python multitask_evaluation.py --info_train ./pretraining/wikiart_datasets/info_elgammal_subset_val.hdf5 --info_val ./pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5 --feature_train ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_val_artist.hdf5 --feature_val ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_test_artist.hdf5 --tasks artist_name,genre,style
+
+python multitask_evaluation.py --info_train ./pretraining/wikiart_datasets/info_elgammal_subset_val.hdf5 --info_val ./pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5 --feature_train ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_val_artist_genre.hdf5 --feature_val ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_test_artist_genre.hdf5 --tasks artist_name,genre,style
+
+python multitask_evaluation.py --info_train ./pretraining/wikiart_datasets/info_elgammal_subset_val.hdf5 --info_val ./pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5 --feature_train ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_val_artist_genre_style.hdf5 --feature_val ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_test_artist_genre_style.hdf5 --tasks artist_name,genre,style
+
+python multitask_evaluation.py --info_train ./pretraining/wikiart_datasets/info_elgammal_subset_val.hdf5 --info_val ./pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5 --feature_train ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_val_artist_genre_style_media_century.hdf5 --feature_val ./evaluation/pretrained_features/NarrowNet512_VGG_info_elgammal_subset_test_artist_genre_style_media_century.hdf5 --tasks artist_name,genre,style
+

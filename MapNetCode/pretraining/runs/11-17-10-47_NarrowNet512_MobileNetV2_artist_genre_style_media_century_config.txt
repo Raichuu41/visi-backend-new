@@ -1,0 +1,22 @@
+not_narrow						False
+val_file						wikiart_datasets/info_elgammal_subset_val.hdf5
+office_dataset						False
+batch_size						64
+shape_dataset						False
+epochs						100
+feature_dim						512
+seed						123
+use_gpu						True
+exp_name						artist_genre_style_media_century
+device						0
+stat_file						wikiart_datasets/info_elgammal_subset_train_mean_std.pkl
+chkpt						None
+task_selection						['artist_name', 'genre', 'style', 'media', 'century']
+train_file						wikiart_datasets/info_elgammal_subset_train.hdf5
+bam_dataset						False
+log_interval						10
+lr						0.001
+log_dir						runs/
+im_path						/export/home/kschwarz/Documents/Data/Wikiart_Elgammal/resize_224
+model						mobilenet_v2
+momentum						0.9

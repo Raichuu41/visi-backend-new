@@ -1,0 +1,23 @@
+Vincent van Gogh			23
+Boris Kustodiev			2
+Camille Pissarro			3
+Gustave Dore			8
+Pierre-Auguste Renoir			18
+Marc Chagall			13
+Claude Monet			5
+Ivan Shishkin			11
+Nicholas Roerich			15
+Martiros Saryan			14
+Edgar Degas			6
+Pablo Picasso			16
+Paul Cezanne			17
+Childe Hassam			4
+Salvador Dali			22
+Eugene Boudin			7
+Ivan Aivazovsky			10
+Pyotr Konchalovsky			19
+Raphael Kirchner			20
+Rembrandt			21
+John Singer Sargent			12
+Ilya Repin			9
+Albrecht Durer			1

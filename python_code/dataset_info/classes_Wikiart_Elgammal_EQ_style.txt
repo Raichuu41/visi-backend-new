@@ -1,0 +1,24 @@
+Impressionism			11
+Northern Renaissance			15
+High Renaissance			10
+New Realism			14
+Rococo			21
+Early Renaissance			7
+Contemporary Realism			5
+Ukiyo-e			24
+Expressionism			8
+Symbolism			23
+Pointillism			16
+Fauvism			9
+Colour Field Painting			4
+Art Nouveau-Modern Art			2
+Minimalism			13
+Baroque			3
+Realism			20
+Post Impressionism			18
+Abstract Expressionism			1
+Romanticism			22
+Primitivism-Naive Art			19
+Pop Art			17
+Mannerism-Late-Renaissance			12
+Cubism			6

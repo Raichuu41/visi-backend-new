@@ -1,0 +1,8 @@
+Papillary Carcinoma			6
+Lobular Carcinoma			4
+Ductal Carcinoma			2
+Mucinous Carcinoma			5
+Tubular Adenoma			8
+Adenosis			1
+Fibroadenoma			3
+Phyllodes Tumor			7

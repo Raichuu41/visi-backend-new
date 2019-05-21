@@ -227,7 +227,7 @@ class TripletSelector(object):
             idx_negatives = torch.nonzero((label != lbl) * (label >= 0) + (label == -lbl))
 
             anchor_positives = torch.LongTensor(list(combinations(idx_positives, 2)))  # All anchor-positive pairs
-            ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
+            ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]] # distances between a und p per pair
 
             for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):        # compute the loss values for all negatives and choose according to selection function
                 an_distances = distance_matrix[anchor_positive[0], idx_negatives]
@@ -262,6 +262,7 @@ def select_random(loss_values, margin=None):
 
 def select_semihard(loss_values, margin):
     idcs = torch.nonzero((loss_values.view(-1) < margin) & (loss_values.view(-1) > 0)).view(-1)
+    # ^select negatives inside margin
     if len(idcs) == 0:
         return None#torch.argmin(loss_values)
     choice = torch.randint(0, len(idcs), (1,), dtype=torch.long)[0]

@@ -127,11 +127,13 @@ if __name__ == '__main__':
 
     init = Initializer(args.dataset_name, impath=None, info_file=None, verbose=True,
                        feature_dim=args.feature_dim)
+    # initialize files needed for training, like precomputed features
     init.initialize(dataset=False, projection=False,
                     multi_features=args.use_multi_features,
                     raw_features=args.use_pretrained,
                     is_test=args.dataset_name.endswith('_test'))
     data_dict = init.get_data_dict(normalize_features=not args.use_pretrained)
+    # ^directly contains features and projections
     
     if args.use_multi_features:
         features = data_dict['multi_features']

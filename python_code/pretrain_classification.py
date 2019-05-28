@@ -31,24 +31,12 @@ class LossLogger:
 
 
 
-def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
-
-    """
-    def eval_fn(input):
-        fts = model.forward(input)
-        return fts, None
-    """
+def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None, resume=False):
 
     if outpath is not None and not os.path.isdir(os.path.dirname(outpath)):
         os.makedirs(os.path.dirname(outpath))
-
-    """
-    if log_dir is not None:
-        logger = TBPlotter(log_dir)
-        logger.print_logdir()
-    else:
-        logger = None
-    """
+    
+    file_path = os.path.join(outpath, "nclass_best_loss_{}.pt".format(type(model).__name__))
 
     loader_kwargs = {'num_workers': 4} if use_gpu else {}
 
@@ -58,6 +46,15 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=2e-4)
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, threshold=1e-3, verbose=True)
     loss_fn = torch.nn.CrossEntropyLoss(size_average=False, reduce=False)
+    epoch = 1
+
+    if resume:
+        sd = torch.load(file_path)
+        model.load_state_dict(sd["state_dict"])
+        optimizer.load_state_dict(sd["optimizer"])
+        lr_scheduler.load_state_dict(sd["scheduler"])
+        epoch = sd["epoch"]
+
     """
     triplet_selector = TripletSelector(margin=torch.tensor(0.2), negative_selection_fn=select_semihard)
     loss_fns_train = [
@@ -73,7 +70,6 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
     """
     # train network until scheduler reduces learning rate to threshold value
     lr_threshold = 5e-5
-    epoch = 1
 
     best_loss = float('inf')
     best_epoch = -1
@@ -92,7 +88,7 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
                 lbl = data[1].cuda() if use_gpu else data[1]
             else:
                 raise RuntimeError("No labels given for training.")
-            output = model.embedder(model(inp))
+            output = model.class_head(model(inp))
 
             """
             torch.set_printoptions(profile="full")
@@ -120,7 +116,7 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
                 lbl = data[1].cuda() if use_gpu else data[1]
             else:
                 raise RuntimeError("No labels given for validation.")
-            output = model.embedder(model(inp))
+            output = model.class_head(model(inp))
 
             loss = loss_fn(output, lbl)
             acc_logger.log((output.argmax(dim=1) == lbl).tolist())
@@ -128,6 +124,8 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
         
         testacc  = acc_logger.end_epoch()
         testloss = val_logger.end_epoch()
+        lr_scheduler.step(testloss)
+
         if testloss < best_loss:
             best_loss = testloss
             best_epoch = epoch
@@ -136,10 +134,10 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
                     'state_dict': model.state_dict(),
                     'epoch': epoch,
                     'best_loss': best_loss,
-                    'state_dict': model.state_dict(),
+                    #'state_dict': model.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'scheduler': lr_scheduler.state_dict()
-                }, os.path.join(outpath, "class_best_loss_{}.pt".format(type(model).__name__)))
+                }, file_path)
 
         epoch += 1
         tqdm.write("Ended Epoch {} with {:.3f}tl; {:.3f}vl; {:.3f}%".format(epoch, trainloss, testloss, testacc))
@@ -150,9 +148,8 @@ def train_loop(model, trainset, testset, lr=1e-3, use_gpu=True, outpath=None):
         print('Saved model to {}.'.format(outpath))
 
 def use_classification_head(model, n_labels):
-    head = torch.nn.Linear(model.embedder[-1].in_features, n_labels)
-    model.old_head = model.embedder[-1]
-    model.embedder[-1] = head
+    model.class_head = torch.nn.Sequential(torch.nn.ReLU(inplace=False),torch.nn.Linear(model.mapping[-1].out_features, n_labels))
+
 
 
 # mostly copied from pretraining.py
@@ -166,6 +163,8 @@ if __name__ == "__main__":
                         help='Number of mapping layers.')
     parser.add_argument('--device', default=0, type=int,
                         help='CUDA device')
+    parser.add_argument('--resume', default=False, action='store_true',
+                        help='Resume from an earlier snapshot.')
 
     """
     parser.add_argument('--wait', default=0, type=int,
@@ -256,7 +255,7 @@ if __name__ == "__main__":
         """
 
         warnings.filterwarnings("ignore", category=UserWarning) # ignore PIL EXIF warnings
-        train_loop(model, train_dataset, val_dataset, outpath=outpath)
+        train_loop(model, train_dataset, val_dataset, outpath=outpath, resume=args.resume)
 
         exit()
         # not important form here on (for now...)

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from aux import write_config
 from initialization import Initializer
 from train import train_mapnet
-from model import MapNet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
+from model import MapNet, mapnet#_1, mapnet_2, mapnet_3, mapnet_4
 
 
 def get_int_labels(dataset_name, labels, outdir='./dataset_info'):
@@ -186,16 +186,14 @@ if __name__ == '__main__':
         if not args.use_pretrained:
             model = MapNet(feature_dim=args.feature_dim, output_dim=args.projection_dim)
         else:
-            if args.n_layers == 1:
-                model = mapnet_1(pretrained=True)
-            elif args.n_layers == 2:
-                model = mapnet_2(pretrained=True)
-            elif args.n_layers == 3:
-                model = mapnet_3(pretrained=True)
-            elif args.n_layers == 4:
-                model = mapnet_4(pretrained=True)
+            if args.n_layers in {0,1,2,3,4}:
+                model = mapnet(args.n_layers, pretrained=True, new_pretrain=True) # new pretrain loads from new path
             else:
-                raise AttributeError('Numbers of layers not implemented.')
+                raise AttributeError('Number of layers not implemented.')
+
+            # remove classification head, if still there from pretraining
+            if hasattr(model, "class_head"):
+                delattr(model, "class_head")
 
             # fix the reduction layer weights
             for param in model.mapping[0].parameters():

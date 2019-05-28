@@ -9,7 +9,7 @@ def get_configs():
     verbose = True
     use_test = False
     use_pretrained = True
-    n_layers = 2
+    n_layers = 0
 
     # dataset configurations
     dataset_name = 'STL_label_train'
@@ -17,7 +17,7 @@ def get_configs():
     # dataset_name = 'Wikiart_Elgammal_EQ_artist_train'
     dataset_dir = './dataset_info'
     if use_pretrained:
-        outdir = './automated_runs/pretrained/{}_layers/smaller_LR'.format(n_layers)
+        outdir = './automated_runs/pretrained/{}_layers/class_pretrained'.format(n_layers)
     else:
         outdir = './automated_runs'
 

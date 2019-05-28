@@ -172,6 +172,18 @@ class TSNEWrapperMapNet(TSNELoss):
         indices = data[1]
         return super(TSNEWrapperMapNet, self).forward(x, y, indices)
 
+class CosineLoss(nn.Module):
+    def __init__(self, average=False):
+        super(TripletLoss, self).__init__()
+        self.average = average
+    
+    def forward(self, prediction, labels):
+        if prediction.dim() == 2 and labels.dim() == 1 and prediction.shape[0] == labels.shape[0]:
+            raise ValueError("CosineLoss: wrong dims for prediction and labels.")
+        n_samples = labels.shape[0]
+        onehot = torch.zeros_like(prediction)
+        onehot[torch.arange(0,n_samples), labels] = 1
+        return 1 - torch.nn.functional.cosine_similarity(prediction, onehot, dim=1)
 
 class TripletLoss(nn.Module):
     def __init__(self, triplet_selector, average=False):

@@ -1,4 +1,5 @@
 import matplotlib
+matplotlib.use('Agg') #use MPL without DISPLAY
 import argparse
 import numpy as np
 import pandas as pd
@@ -19,16 +20,17 @@ import torch.nn.functional as F
 
 
 from initialization import Initializer
-from model import MapNet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
+from model import MapNet, mapnet#_1, mapnet_2, mapnet_3, mapnet_4
 from aux import TexPlotter, TableWriter, load_weights
 from train import evaluate_model
-
 
 MACHINE_EPS = np.finfo(float).eps
 
 parser = argparse.ArgumentParser(description='Evaluate trained models.')
 
 # general configurations
+parser.add_argument('--device', default=0, type=int, help='CUDA device to run evals on')
+
 parser.add_argument('--labels', default=False, action='store_true',
                     help='Evaluate generated labels.')
 parser.add_argument('--models', default=False, action='store_true',
@@ -290,14 +292,8 @@ def evaluate_pretraining(n_layers=1):
     feature_file = './features/ImageNet_label_test.h5'
     feature_key = 'features_mapped_{}_layers'.format(n_layers)
     if not os.path.isfile(feature_file) or feature_key not in dd.io.load(feature_file).keys():
-        if n_layers == 1:
-            model = mapnet_1(pretrained=True)
-        elif n_layers == 2:
-            model = mapnet_2(pretrained=True)
-        elif n_layers == 3:
-            model = mapnet_3(pretrained=True)
-        elif n_layers == 4:
-            model = mapnet_4(pretrained=True)
+        if n_layers in {0,1,2,3,4}:
+            model = mapnet(n_layers, pretrained=True, new_pretrain=True)
         else:
             raise AttributeError('Number of layers has to be [1,2,3,4].')
 
@@ -645,18 +641,14 @@ def evaluate_training(dataset_name, weight_file, dataset_dir='./dataset_info', o
     data_dict = init.get_data_dict(normalize_features=not pretraining)
 
     if pretraining:
-        if args.n_layers == 1:
-            model = mapnet_1(pretrained=False)
-        elif args.n_layers == 2:
-            model = mapnet_2(pretrained=False)
-        elif args.n_layers == 3:
-            model = mapnet_3(pretrained=False)
-        elif args.n_layers == 4:
-            model = mapnet_4(pretrained=False)
+        if args.n_layers in {0,1,2,3,4}:
+            model = mapnet(args.n_layers, pretrained=False)
     else:
         model = MapNet(feature_dim=data_dict['features'].shape[1], output_dim=projection_dim)
     if use_gpu:
         model = model.cuda()
+    if hasattr(model, "featurenet"):
+        delattr(model, "featurenet")
 
     # load weights
     best_weights = load_weights(weight_file, model.state_dict())
@@ -1005,199 +997,201 @@ def write_table_model_evaluation(dataset_names):
 
 
 if __name__ == '__main__':
-    if args.pretraining:
-        evaluate_pretraining(n_layers=args.n_layers)
-        exit()
+    print("Working on device {}".format(args.device))
+    with torch.cuda.device(args.device):
+        if args.pretraining:
+            evaluate_pretraining(n_layers=args.n_layers)
+            exit()
 
-    if args.outdir is None:
-        args.outdir = os.path.join(args.path_to_files, 'evaluation')
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
-    try:
-        data_dir = os.path.join(args.path_to_files, args.dataset_name.replace('_test', '_train'))
-        if not os.path.isdir(data_dir):
-            raise ReferenceError()
-    except ReferenceError:
-        print('Use direct path to files as data directoy.')
-        data_dir = args.path_to_files
-    if data_dir.endswith('_test'):          # evaluation on testset with trained models
-        data_dir = data_dir.replace('_test', '_train')
+        if args.outdir is None:
+            args.outdir = os.path.join(args.path_to_files, 'evaluation')
+        if not os.path.isdir(args.outdir):
+            os.makedirs(args.outdir)
+        try:
+            data_dir = os.path.join(args.path_to_files, args.dataset_name.replace('_test', '_train'))
+            if not os.path.isdir(data_dir):
+                raise ReferenceError()
+        except ReferenceError:
+            print('Use direct path to files as data directoy.')
+            data_dir = args.path_to_files
+        if data_dir.endswith('_test'):          # evaluation on testset with trained models
+            data_dir = data_dir.replace('_test', '_train')
 
-    if args.labels:
-        evaluate_labels(data_dir=data_dir, outdir=args.outdir, plot=args.plot, overwrite=args.overwrite)
-        evaluate_labels_quantitative(data_dir=data_dir, outdir=args.outdir, plot=args.plot, overwrite=args.overwrite)
+        if args.labels:
+            evaluate_labels(data_dir=data_dir, outdir=args.outdir, plot=args.plot, overwrite=args.overwrite)
+            evaluate_labels_quantitative(data_dir=data_dir, outdir=args.outdir, plot=args.plot, overwrite=args.overwrite)
 
-    if args.models:
-        weight_files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.pth.tar')]
-        feature_dim = 512
-        # if not os.path.isfile(os.path.join(args.outdir, args.dataset_name + '.h5')):
-        #     make_baseline(args.dataset_name, outdir=args.outdir, feature_dim=feature_dim, mode='a')
-        for weight_file in weight_files:
-            if not args.overwrite:
-                heuristic = heuristic_from_weightfile(weight_file)
+        if args.models:
+            weight_files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.pth.tar')]
+            feature_dim = 512
+            # if not os.path.isfile(os.path.join(args.outdir, args.dataset_name + '.h5')):
+            #     make_baseline(args.dataset_name, outdir=args.outdir, feature_dim=feature_dim, mode='a')
+            for weight_file in weight_files:
+                if not args.overwrite:
+                    heuristic = heuristic_from_weightfile(weight_file)
+                    try:
+                        if heuristic == 'test':
+                            heuristic = weight_file.split('_')[-2]
+                            if heuristic == 'clique':
+                                heuristic = 'clique_svm'
+                            outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '.h5'))['test'][heuristic]['features']
+                        else:
+                            outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '.h5'))[heuristic]['features']
+                        index = weight_file.split('/')[-1].split('.pth.tar')[0]
+                        if index in outdf.index:
+                            print('Evaluation exists - skip {}.'.format(index))
+                            continue
+                    except (KeyError, IOError):
+                        pass
                 try:
-                    if heuristic == 'test':
-                        heuristic = weight_file.split('_')[-2]
-                        if heuristic == 'clique':
-                            heuristic = 'clique_svm'
-                        outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '.h5'))['test'][heuristic]['features']
-                    else:
-                        outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '.h5'))[heuristic]['features']
-                    index = weight_file.split('/')[-1].split('.pth.tar')[0]
-                    if index in outdf.index:
-                        print('Evaluation exists - skip {}.'.format(index))
-                        continue
-                except (KeyError, IOError):
-                    pass
-            try:
-                torch.load(weight_file)
-            except (RuntimeError, KeyError) as e:
-                print('Error in weight file - skip {}.'.format(weight_file))
-                continue
-            evaluate_training(args.dataset_name, weight_file, outdir=args.outdir,
-                              pretraining=args.pretrained_models, n_layers=args.n_layers,
-                              n_stat_runs=3, feature_dim=feature_dim, mode='a')
+                    torch.load(weight_file)
+                except (RuntimeError, KeyError) as e:
+                    print('Error in weight file [{}:{}] - skip {}.'.format(type(e), e, weight_file))
+                    continue
+                evaluate_training(args.dataset_name, weight_file, outdir=args.outdir,
+                                pretraining=args.pretrained_models, n_layers=args.n_layers,
+                                n_stat_runs=3, feature_dim=feature_dim, mode='a')
 
-        # for weight_file in weight_files:
-        #     if not args.overwrite and os.path.isfile(os.path.join(args.outdir, args.dataset_name + '_splitstt.h5')):
-        #         heuristic = heuristic_from_weightfile(weight_file)
-        #         try:
-        #             if heuristic == 'test':
-        #                 heuristic = weight_file.split('_')[-2]
-        #                 if heuristic == 'clique':
-        #                     heuristic = 'clique_svm'
-        #                 outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '_splitstt.h5'))['test'][heuristic]['features']
-        #             else:
-        #                 outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '_splitstt.h5'))[heuristic]['features']
-        #             index = weight_file.split('/')[-1].split('.pth.tar')[0]
-        #             if index in outdf['train'].index:
-        #                 print('Evaluation exists - skip: {}.'.format(index))
-        #                 continue
-        #         except KeyError:
-        #             pass
-        #     evaluate_training_split_train_test_retrieval(args.dataset_name, weight_file, outdir=args.outdir,
-        #                                                  n_stat_runs=3, feature_dim=feature_dim, mode='a')
+            # for weight_file in weight_files:
+            #     if not args.overwrite and os.path.isfile(os.path.join(args.outdir, args.dataset_name + '_splitstt.h5')):
+            #         heuristic = heuristic_from_weightfile(weight_file)
+            #         try:
+            #             if heuristic == 'test':
+            #                 heuristic = weight_file.split('_')[-2]
+            #                 if heuristic == 'clique':
+            #                     heuristic = 'clique_svm'
+            #                 outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '_splitstt.h5'))['test'][heuristic]['features']
+            #             else:
+            #                 outdf = dd.io.load(os.path.join(args.outdir, args.dataset_name + '_splitstt.h5'))[heuristic]['features']
+            #             index = weight_file.split('/')[-1].split('.pth.tar')[0]
+            #             if index in outdf['train'].index:
+            #                 print('Evaluation exists - skip: {}.'.format(index))
+            #                 continue
+            #         except KeyError:
+            #             pass
+            #     evaluate_training_split_train_test_retrieval(args.dataset_name, weight_file, outdir=args.outdir,
+            #                                                  n_stat_runs=3, feature_dim=feature_dim, mode='a')
 
-        # save averaged df
-        def save_averaged_splits():
-            outfile = os.path.join(args.outdir, args.dataset_name + '_splitstt.h5')
-            data_dict = dd.io.load(outfile)
-            heuristics = ['none', 'area', 'svm', 'clique_svm']
-            names = ['features', 'projection']
-            splits = ['train', 'pred', 'test']
-            mode = 'w'
-            # copy baseline
-            for name in names:
-                try:
-                    df = data_dict['baseline'][name]
-                    df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join('baseline', name), mode=mode)
-                    mode = 'a'
-                except KeyError:
-                    pass
+            # save averaged df
+            def save_averaged_splits():
+                outfile = os.path.join(args.outdir, args.dataset_name + '_splitstt.h5')
+                data_dict = dd.io.load(outfile)
+                heuristics = ['none', 'area', 'svm', 'clique_svm']
+                names = ['features', 'projection']
+                splits = ['train', 'pred', 'test']
+                mode = 'w'
+                # copy baseline
+                for name in names:
+                    try:
+                        df = data_dict['baseline'][name]
+                        df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join('baseline', name), mode=mode)
+                        mode = 'a'
+                    except KeyError:
+                        pass
 
-            for data_dict_, key in zip([data_dict, ], ('', )):
-                for heuristic in heuristics:
-                    for name in names:
-                        for split in splits:
-                            if split not in data_dict_[heuristic][name].keys():
-                                continue
-                            df = data_dict_[heuristic][name][split]
-                            valid_idcs = np.where(map(lambda x: not x.endswith('_test'), df.index.values))[0]
-                            df = df.iloc[valid_idcs]
+                for data_dict_, key in zip([data_dict, ], ('', )):
+                    for heuristic in heuristics:
+                        for name in names:
+                            for split in splits:
+                                if split not in data_dict_[heuristic][name].keys():
+                                    continue
+                                df = data_dict_[heuristic][name][split]
+                                valid_idcs = np.where(map(lambda x: not x.endswith('_test'), df.index.values))[0]
+                                df = df.iloc[valid_idcs]
+                                df = average_evaluation_df(df)
+
+                                df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join(key, heuristic, name, split), mode=mode)
+                                mode = 'a'
+                return outfile
+
+            def save_averaged():
+                outfile = os.path.join(args.outdir, args.dataset_name + '.h5')
+                data_dict = dd.io.load(outfile)
+                heuristics = ['none', 'area', 'svm', 'clique_svm']
+
+                names = ['features', 'projection']
+                mode = 'w'
+                # copy baseline
+                for name in names:
+                    try:
+                        df = data_dict['baseline'][name]
+                        df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join('baseline', name), mode=mode)
+                        mode = 'a'
+                    except KeyError:
+                        pass
+
+                for data_dict_, key in zip([data_dict, ], ('', )):
+                    for heuristic in heuristics:
+                        if heuristic not in data_dict.keys():
+                            continue
+                        for name in names:
+                            df = data_dict_[heuristic][name]
                             df = average_evaluation_df(df)
 
-                            df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join(key, heuristic, name, split), mode=mode)
+                            valid_idcs = np.where(map(lambda x: not x.endswith('_test'), df.index.values))[0]
+                            df = df.iloc[valid_idcs]
+
+                            df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join(key, heuristic, name),
+                                    mode=mode)
                             mode = 'a'
-            return outfile
+                return outfile
 
-        def save_averaged():
-            outfile = os.path.join(args.outdir, args.dataset_name + '.h5')
-            data_dict = dd.io.load(outfile)
-            heuristics = ['none', 'area', 'svm', 'clique_svm']
+            outfile = save_averaged()
+            plot_model_evaluation(args.dataset_name, outdir=args.outdir)
 
-            names = ['features', 'projection']
-            mode = 'w'
-            # copy baseline
-            for name in names:
-                try:
-                    df = data_dict['baseline'][name]
-                    df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join('baseline', name), mode=mode)
-                    mode = 'a'
-                except KeyError:
-                    pass
+            # outfile = save_averaged_splits()
+            # plot_model_evaluation_splits(args.dataset_name, outdir=args.outdir)
 
-            for data_dict_, key in zip([data_dict, ], ('', )):
-                for heuristic in heuristics:
-                    if heuristic not in data_dict.keys():
-                        continue
-                    for name in names:
-                        df = data_dict_[heuristic][name]
-                        df = average_evaluation_df(df)
+            if args.plot:
+                data_dict = dd.io.load(outfile.replace('.h5', '_avg.h5'))
 
-                        valid_idcs = np.where(map(lambda x: not x.endswith('_test'), df.index.values))[0]
-                        df = df.iloc[valid_idcs]
+                plotter = TexPlotter()
+                plotter.figsize = (3.5, plotter.get_doc_lengths('')['textwidth'])
+                cmap = plt.cm.tab10
 
-                        df.to_hdf(outfile.replace('.h5', '_avg.h5'), key=os.path.join(key, heuristic, name),
-                                  mode=mode)
-                        mode = 'a'
-            return outfile
+                def strtuple_to_ints(strtuple):
+                    try:
+                        vals = [int(s) for s in strtuple.replace('(', '').replace(')', '').strip().split(',')]
+                    except ValueError:
+                        vals = [float(s.replace('-', '.'))
+                                for s in strtuple.replace('(', '').replace(')', '').strip().split(',')]
+                    return vals
 
-        outfile = save_averaged()
-        plot_model_evaluation(args.dataset_name, outdir=args.outdir)
+                for data_dict_, key in zip([data_dict, data_dict['test']], ('', 'test')):
+                    heuristics = ['none', 'area', 'svm']
+                    baseline = data_dict['baseline']
+                    for name in ['features', 'projection']:
+                        df = data_dict_[heuristics[0]][name]
+                        eval_cols = df.columns.levels[0].values
+                        base = baseline[name]
 
-        # outfile = save_averaged_splits()
-        # plot_model_evaluation_splits(args.dataset_name, outdir=args.outdir)
+                        # get averages
+                        for ec in eval_cols:
+                            fig, ax = plt.subplots(1)
+                            ax.set_title(ec)
 
-        if args.plot:
-            data_dict = dd.io.load(outfile.replace('.h5', '_avg.h5'))
+                            for i, heuristic in enumerate(heuristics):
+                                df = data_dict_[heuristic][name][ec]
 
-            plotter = TexPlotter()
-            plotter.figsize = (3.5, plotter.get_doc_lengths('')['textwidth'])
-            cmap = plt.cm.tab10
+                                x = np.array(map(lambda x: np.sum(filename_to_tuple(x)), df.index.values))
+                                sort_idx = np.argsort(x)
 
-            def strtuple_to_ints(strtuple):
-                try:
-                    vals = [int(s) for s in strtuple.replace('(', '').replace(')', '').strip().split(',')]
-                except ValueError:
-                    vals = [float(s.replace('-', '.'))
-                            for s in strtuple.replace('(', '').replace(')', '').strip().split(',')]
-                return vals
+                                ax.errorbar(x[sort_idx], y=df['mean'].values[sort_idx],
+                                            yerr=df['std'].values[sort_idx],
+                                            label=heuristic, c=cmap(i), marker='.', markersize=10,
+                                            elinewidth=0.5, capsize=3, capthick=0.5)
 
-            for data_dict_, key in zip([data_dict, data_dict['test']], ('', 'test')):
-                heuristics = ['none', 'area', 'svm']
-                baseline = data_dict['baseline']
-                for name in ['features', 'projection']:
-                    df = data_dict_[heuristics[0]][name]
-                    eval_cols = df.columns.levels[0].values
-                    base = baseline[name]
+                            # plot baseline
+                            y = baseline[name][ec].values
+                            x = ax.get_xlim()
+                            ax.plot(x, np.repeat(y, 2), marker='', linestyle='--', c='grey')
 
-                    # get averages
-                    for ec in eval_cols:
-                        fig, ax = plt.subplots(1)
-                        ax.set_title(ec)
-
-                        for i, heuristic in enumerate(heuristics):
-                            df = data_dict_[heuristic][name][ec]
-
-                            x = np.array(map(lambda x: np.sum(filename_to_tuple(x)), df.index.values))
-                            sort_idx = np.argsort(x)
-
-                            ax.errorbar(x[sort_idx], y=df['mean'].values[sort_idx],
-                                        yerr=df['std'].values[sort_idx],
-                                        label=heuristic, c=cmap(i), marker='.', markersize=10,
-                                        elinewidth=0.5, capsize=3, capthick=0.5)
-
-                        # plot baseline
-                        y = baseline[name][ec].values
-                        x = ax.get_xlim()
-                        ax.plot(x, np.repeat(y, 2), marker='', linestyle='--', c='grey')
-
-                        plt.legend()
-                        plotter.render(fig)
-                        plt.show(block=False)
-                        if key == 'test':
-                            outfilename = outfile.replace('.h5', '_{}_test_{}.png'.format(name, ec))
-                        else:
-                            outfilename = outfile.replace('.h5', '_{}_{}.png'.format(name, ec))
-                        plotter.save(fig, outfilename=outfilename, dpi=200)
-                        plt.close()
+                            plt.legend()
+                            plotter.render(fig)
+                            plt.show(block=False)
+                            if key == 'test':
+                                outfilename = outfile.replace('.h5', '_{}_test_{}.png'.format(name, ec))
+                            else:
+                                outfilename = outfile.replace('.h5', '_{}_{}.png'.format(name, ec))
+                            plotter.save(fig, outfilename=outfilename, dpi=200)
+                            plt.close()

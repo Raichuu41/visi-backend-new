@@ -361,6 +361,7 @@ def load_weights(weightfile, state_dict_model, prefix_file='', prefix_model=''):
             pass
 
     state_dict_model.update(pretrained_dict)
+
     return state_dict_model
 
 

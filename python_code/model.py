@@ -1,3 +1,5 @@
+import sys
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -224,12 +226,26 @@ class MapNet_pretraining_4(nn.Module):
         # x = self.embedder(F.relu(x))
         return x
 
+def mapnet(n, pretrained=False, feature_dim=512, output_dim=2, new_pretrain=False):
+    n = int(n)
+    classhandle = getattr(sys.modules[__name__], "MapNet_pretraining_{}".format(n))
+    model = classhandle(feature_dim=feature_dim, output_dim=output_dim)
+    if pretrained:
+        if new_pretrain:
+            weight_file = "./pretraining/nclass_best_loss_MapNet_pretraining_{}.pt".format(n)
+        else:
+            weight_file = './pretraining/ImageNet_label_train_nlayers_{}.pth.tar'.format(n)
+        pretrained_dict = load_weights(weightfile=weight_file, state_dict_model=model.state_dict())
+        model.load_state_dict(pretrained_dict)
+    return model
+
+##### DEPRECATED: ###
 
 def mapnet_1(pretrained=False, feature_dim=512, output_dim=2, new_pretrain=False):
     model = MapNet_pretraining_1(feature_dim=feature_dim, output_dim=output_dim)
     if pretrained:
         if new_pretrain:
-            weight_file = "./pretraining/class_best_loss_MapNet_pretraining_0.pt"
+            weight_file = "./pretraining/class_best_loss_MapNet_pretraining_1.pt"
         else:
             weight_file = './pretraining/ImageNet_label_train_nlayers_1.pth.tar'
         pretrained_dict = load_weights(weightfile=weight_file, state_dict_model=model.state_dict())

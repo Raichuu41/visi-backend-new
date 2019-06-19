@@ -62,6 +62,8 @@ parser.add_argument('--use_multi_features', default=False, action='store_true',
                     help='Use feature variants for training.')
 parser.add_argument('--use_pretrained', default=False, action='store_true',
                     help='Use ImageNet pretrained layers in MapNet')
+parser.add_argument('--new_pretrain', default=False, action='store_true',
+                    help='When using pretraining, use weights from classification')
 
 # dataset configurations
 parser.add_argument('--dataset_name', type=str,
@@ -187,7 +189,7 @@ if __name__ == '__main__':
             model = MapNet(feature_dim=args.feature_dim, output_dim=args.projection_dim)
         else:
             if args.n_layers in {0,1,2,3,4}:
-                model = mapnet(args.n_layers, pretrained=True, new_pretrain=True) # new pretrain loads from new path
+                model = mapnet(args.n_layers, pretrained=True, new_pretrain=args.new_pretrain) # new pretrain loads from new path
             else:
                 raise AttributeError('Number of layers not implemented.')
 

@@ -23,23 +23,23 @@ def get_configs():
     # n_runs = 3
     n_runs = 1
     # heuristics = ('none', 'area', 'svm')
-    heuristics = ('clique_svm', 'svm')
+    heuristics = ('none', 'area', 'svm')# ,'clique_svm')
     verbose = True
 
     # # dataset configurations
-    # dataset_name = 'AwA2_vectors_train'
-    # dataset_dir = './dataset_info'
-    # impath = '/net/hci-storage02/groupfolders/compvis/datasets/Animals_with_Attributes2/single_folder_images'
+    dataset_name = 'AwA2_vectors_train'
+    dataset_dir = './dataset_info'
+    impath = '/net/hci-storage02/groupfolders/compvis/datasets/Animals_with_Attributes2/single_folder_images'
 
     # # dataset configurations
-    # dataset_name = 'Wikiart_Elgammal_artist_train'
+    # dataset_name = 'Wikiart_Elgammal_EQ_artist_train'
     # dataset_dir = './dataset_info'
-    # impath = '/export/home/kschwarz/Documents/Data/Wikiart_Elgammal'
+    # impath = '/export/home/pdamman/Wikiart_Elgammal'
 
     # dataset configurations
-    dataset_name = 'STL_label_train'
-    dataset_dir = './dataset_info'
-    impath = '/export/home/pdamman/STL10/img'
+    # dataset_name = 'STL_label_train'
+    # dataset_dir = './dataset_info'
+    # impath = '/export/home/pdamman/STL10/img'
 
     # # dataset configurations
     # dataset_name = 'BreakHis_tumor_train'

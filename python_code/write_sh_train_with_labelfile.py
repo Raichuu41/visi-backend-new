@@ -4,20 +4,21 @@ from aux import find_free_filename, SHWriter
 
 def get_configs():
     # general configurations
-    #heuristics = ('none', 'area', 'svm')
-    heuristics = ('clique_svm', 'svm')
+    heuristics = ('none', 'area', 'svm')
+    #heuristics = ('clique_svm', 'svm')
     verbose = True
     use_test = False
     use_pretrained = True
-    n_layers = 0
+    new_pretrain = False
+    n_layers = 2
 
     # dataset configurations
-    dataset_name = 'STL_label_train'
+    # dataset_name = 'STL_label_train'
     # dataset_name = 'AwA2_vectors_train'
-    # dataset_name = 'Wikiart_Elgammal_EQ_artist_train'
+    dataset_name = 'Wikiart_Elgammal_EQ_artist_train'
     dataset_dir = './dataset_info'
     if use_pretrained:
-        outdir = './automated_runs/pretrained/{}_layers/class_pretrained'.format(n_layers)
+        outdir = './automated_runs/pretrained/{}_layers/old'.format(n_layers)
     else:
         outdir = './automated_runs'
 
@@ -41,10 +42,10 @@ if not os.path.isdir(outdir):
 
 if __name__ == '__main__':
     config_vars = get_configs()
-    label_file_dir = os.path.join('./automated_runs/generated_labels', config_vars['dataset_name'], 'weighted_clustersampling/larger_clusters/clique_svm_10')
+    label_file_dir = os.path.join('./automated_runs/generated_labels', config_vars['dataset_name'])#, 'weighted_clustersampling/larger_clusters/clique_svm_10')
     label_files = [os.path.join(label_file_dir, f) for f in os.listdir(label_file_dir)
                    if f.endswith('.h5')]
-    filename = os.path.join(outdir, '{}.sh'.format(config_vars['dataset_name']))
+    filename = os.path.join(outdir, 'old_{}.sh'.format(config_vars['dataset_name'])) #change!!!!
     filename = find_free_filename(filename)
 
     for i, label_file in enumerate(label_files):

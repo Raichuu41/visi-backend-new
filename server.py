@@ -25,9 +25,11 @@ import python_code.initialization as init
 import python_code.communication as communication
 from python_code.label_generation import svm_k_nearest_neighbors
 import python_code.train as train
-from python_code.model import MapNet
-from python_code.aux import scale_to_range
+from python_code.model import MapNet, mapnet
+from python_code.aux import scale_to_range, load_weights
 import pickle
+
+N_LAYERS = 2
 
 
 # initialize global dataset information (image ids, features, embedding) and network
@@ -233,11 +235,66 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
-            #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            # print(data)
+            # data = json.loads(str(body, encoding='utf-8'))      # python 3
+            
+            # print "\033[32;1m", "DATA:", data, "\033[0m" #DEBUG!
 
+
+            # here goes nothing!
+            print "data:", [(k, type(v)) for (k,v) in data.items()]
+            print initial_data["info"]
+
+
+
+            reset() #???
+
+            """ # finetuning... not working yet with dim 512, but 4096 needs new feature files
             # Katjas code goes here
-            reset()
+            weightfile = "./user_models/{}/".format(data["userId"])
+            if not os.path.isdir(weightfile):
+                os.makedirs(weightfile)
+            weightfile = os.path.join(weightfile, 'current_model.pth.tar')
+            
+            if "nodes" in data.keys(): # not initial call
+                # load model
+                if os.path.isfile(weightfile): # not first iteration
+                    model = mapnet(N_LAYERS, pretrained=False)
+                    best_weights = load_weights(weightfile, model.state_dict())
+                    model.load_state_dict(best_weights)
+                else: # first iteration
+                    model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
+                model.cuda()
+
+                # gen labels
+                lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
+                lbl.sort(key=lambda x:x[0])
+                idx, lbl = zip(*lbl)
+                assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
+                lbl = [x if x is not None else 0 for x in lbl]
+                lbl = np.array(lbl, dtype=np.long)
+
+                print "shapes:", initial_data["features"].shape, lbl.shape
+
+                # train.train_mapnet(model, initial_data["features"], lbl, verbose=True, outpath=weightfile)
+            
+                # generate projection with new model
+                model.eval()
+                ds = torch.utils.data.TensorDataset(torch.tensor(initial_data["features"]))
+                dl = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False, num_workers=2)
+                proj = []
+                for item in dl:
+                    # print "item:", item, len(item) #DEBUG!
+                    item = item[0].cuda()
+                    print "shape:", item.shape
+                    fts = model.mapping.forward(item)
+                    fts = fts / fts.norm(dim=1, keepdim=True)
+                    proj.append(model.embedder.forward(fts).cpu())
+                proj = torch.stack(proj).numpy()
+                print "proj:", proj.shape, proj #DEBUG!
+
+            #TODO: use new projection
+            """
+            
             graph_df = communication.make_graph_df(image_ids=initial_data['image_id'],
                                                    projection=initial_data['projection'],
                                                    info_df=initial_data['info'],
@@ -246,9 +303,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             graph_json = communication.graph_df_to_json(graph_df, max_elements=max_display)
             index_to_id = communication.make_index_to_id_dict(graph_json)
 
+            print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
             self.wfile.write(graph_json)  #body zurueckschicken
-            # print(graph_json)
-
 
         if self.path == "/trainSvm":
             print("post /trainsvm")

@@ -681,14 +681,14 @@ def evaluate_training(dataset_name, weight_file, dataset_dir='./dataset_info', o
         evaluator.retrieve()
         p = np.arange(0.6, 1, 0.05)
         evaluator.compute_recall_at_p(p=p)
-        # evaluator = ClusteringEvaluator(data=data, labels=gt_labels)
-        # for n in range(n_stat_runs):
-        #     if n > 0:
-        #         evaluator.start_new_run()
-        #     evaluator.make_kmeans_clustering(n_cluster=n_cluster)
-        #     evaluator.predict_labels()
-        #     evaluator.compute_nmi()
-        #     evaluator.compute_f1_score(average='micro')
+        evaluator = ClusteringEvaluator(data=data, labels=gt_labels)
+        for n in range(n_stat_runs):
+            if n > 0:
+                evaluator.start_new_run()
+            evaluator.make_kmeans_clustering(n_cluster=n_cluster)
+            evaluator.predict_labels()
+            evaluator.compute_nmi()
+            evaluator.compute_f1_score(average='micro')
         evaluator.export_results(outfilename=os.path.join(outdir, dataset_name + '.h5'),
                                  index=weight_file.split('/')[-1].split('.pth.tar')[0],
                                  mode=mode, key=key)
@@ -804,7 +804,7 @@ def plot_model_evaluation(dataset_name, outdir='./automated_runs/models/evaluati
     cmap = plt.cm.tab10
 
     for data_dict_, key in zip([data_dict, ], ('', )):
-        heuristics = ['none', 'area', 'svm', 'clique_svm']
+        heuristics = ['svm', 'clique_svm']#['none', 'area', 'svm']#, 'clique_svm'] #
         try:
             baseline = data_dict['baseline']
         except KeyError:

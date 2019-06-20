@@ -29,21 +29,17 @@ from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
 import pickle
 
-N_LAYERS = 2
-DATA_DIR = './dataset_info'
-IMPATH = None                # should not be needed, since all features should be precomputed
+N_LAYERS       = 2
+DATA_DIR       = './dataset_info'
+IMPATH         = None       # should not be needed, since all features should be precomputed
+FEATURE_DIM    = 512
+PROJECTION_DIM = 2
+LIMITS         = (-15, 15)
+MAX_DISPLAY    = 1000       # show at most MAX_DISPLAY images in interface
+START_TIME = time.time()
 
-# lowercase constants [legacy!]
-feature_dim = 512
-projection_dim = 2
-limits = (-15, 15)
-max_display = 1000       # show at most max_display images in interface
-
-# global variables [legacy!]
-StartTime = time.time()
-
-# global variables [non-legacy...]
-initial_datas = {}
+# global variables
+initial_datas = {}   # 
 user_datas = {}
 
 # initialize global dataset information (image ids, features, embedding) and network
@@ -67,7 +63,7 @@ class UserData:
 def initialize_dataset(dataset_name):
     print('Initialize {}...'.format(dataset_name))
     data_info_file = os.path.join(DATA_DIR, 'info_{}.h5'.format(dataset_name))
-    initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file, feature_dim=feature_dim)
+    initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file, feature_dim=FEATURE_DIM)
     initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'))
     initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
     """
@@ -104,11 +100,6 @@ def dataset_id_to_name(ds_id):
 
     return d[ds_id]
 
-def reset():
-    """Reset the global variables."""
-    pass
-
-
 def generate_labels_and_weights():
     """
     used in "/startUpdateEmbedding"
@@ -131,7 +122,7 @@ def update_coordinates(projection, socket_id, epoch=None):
     """
     used in `/startUpdateProjection` and store_projection()
     """
-    global graph_df, initial_data, limits
+    global graph_df, initial_data, LIMITS
     # convert indexing of projection to
     min_epoch = 10
     if epoch is None or epoch >= min_epoch:
@@ -140,8 +131,8 @@ def update_coordinates(projection, socket_id, epoch=None):
         map_index = map(lambda x: initial_data['image_id'].index(x), ids)
 
         small_graph = graph_df.loc[np.array(initial_data['image_id'])[map_index]]
-        x, y = scale_to_range(projection[map_index, 0], limits[0], limits[1]), \
-               scale_to_range(projection[map_index, 1], limits[0], limits[1])
+        x, y = scale_to_range(projection[map_index, 0], LIMITS[0], LIMITS[1]), \
+               scale_to_range(projection[map_index, 1], LIMITS[0], LIMITS[1])
         small_graph.loc[:, ('x', 'y')] = zip(x, y)
         payload = communication.graph_df_to_json(small_graph, socket_id=socket_id)
         communication.send_payload(payload)
@@ -162,14 +153,14 @@ def store_projection(model, weightfile=None, use_gpu=True, socket_id=None):
     if socket_id is not None:
         update_coordinates(projection, socket_id=socket_id)
 
-    x = scale_to_range(projection[:, 0], limits[0], limits[1])
-    y = scale_to_range(projection[:, 1], limits[0], limits[1])
+    x = scale_to_range(projection[:, 0], LIMITS[0], LIMITS[1])
+    y = scale_to_range(projection[:, 1], LIMITS[0], LIMITS[1])
 
     graph_df.loc[initial_data['image_id'], ('x', 'y')] = zip(x, y)
 
 
 def update_embedding_handler(socket_id):
-    print('action ! -> time : {:.1f}s'.format(time.time()-StartTime))
+    print('action ! -> time : {:.1f}s'.format(time.time()-START_TIME))
     nodes = []
     for x in range(0, 2400):
         nodes.append({'id': x, 'x': round(uniform(0, 25), 2), 'y': round(uniform(0, 25))})
@@ -232,7 +223,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         """
         definiert den Umgang mit POST Requests
         Liest den Body aus - gibt ihn zum konvertieren weiter
-
         """
         global user_datas
         if self.path == "/nodes":
@@ -254,8 +244,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # DEBUGging 'data'
             # print "\033[32;1m", "DATA:", data, "\033[0m"
             print "data:", [(k, type(v)) for (k,v) in data.items()]
-
-            reset() #???
 
             # Katjas code goes here
             weightfile = "./user_models/{}/".format(data["userId"])
@@ -321,12 +309,13 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # shortcut for data access
             initial_data = initial_datas[user_datas[user_id].dataset]
 
-            user_datas[user_id].graph_df = communication.make_graph_df(image_ids=initial_data['image_id'],
-                                                   projection=initial_data['projection'],
-                                                   info_df=initial_data['info'],
-                                                   coordinate_range=limits)
+            user_datas[user_id].graph_df = communication.make_graph_df(
+                                            image_ids=initial_data['image_id'],
+                                            projection=initial_data['projection'],
+                                            info_df=initial_data['info'],
+                                            coordinate_range=LIMITS)
 
-            graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=max_display)
+            graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
             user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
 
             # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
@@ -352,14 +341,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             dataset_name = user_datas[user_id].dataset
             initial_data = initial_datas[dataset_name]
 
-
             group_id = int(data['groupId'])
             thresh = float(data['threshold'])
             if 'negatives' not in data.keys():          # first iteration
                 # reset _svm_temp
                 user_datas[user_id]._svm_temp = {'positives': data['positives'],
-                             'negatives': set([]),              # allow no duplicates
-                             'svms': [] if user_datas[user_id]._svm_temp is None else user_datas[user_id]._svm_temp['svms']}
+                                                 'negatives': set([]),              # allow no duplicates
+                                                 'svms': [] if user_datas[user_id]._svm_temp is None
+                                                          else user_datas[user_id]._svm_temp['svms']}
                 user_datas[user_id]._svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
 
             else:
@@ -474,9 +463,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #data = json.dumps({}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-
-
-
         if self.path == "/startUpdateEmbedding":
             print("post /startUpdateEmbedding")
             ### POST Request Header ###
@@ -570,11 +556,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-        
         """
-
         return
-
 
 if __name__ == "__main__":
     # config

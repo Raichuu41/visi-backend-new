@@ -40,7 +40,6 @@ limits = (-15, 15)
 max_display = 1000       # show at most max_display images in interface
 
 # global variables [legacy!]
-_svm_temp = None
 StartTime = time.time()
 
 # global variables [non-legacy...]
@@ -236,7 +235,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
         """
         global user_datas
-        global _svm_temp
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -359,15 +357,15 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             thresh = float(data['threshold'])
             if 'negatives' not in data.keys():          # first iteration
                 # reset _svm_temp
-                _svm_temp = {'positives': data['positives'],
+                user_datas[user_id]._svm_temp = {'positives': data['positives'],
                              'negatives': set([]),              # allow no duplicates
-                             'svms': [] if _svm_temp is None else _svm_temp['svms']}
-                _svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
+                             'svms': [] if user_datas[user_id]._svm_temp is None else user_datas[user_id]._svm_temp['svms']}
+                user_datas[user_id]._svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
 
             else:
-                _svm_temp['positives'] = data['positives']      # overwrite positives
-                _svm_temp['negatives'].update(data['negatives'])
-                _svm_temp['negatives'] = _svm_temp['negatives'].difference(_svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
+                user_datas[user_id]._svm_temp['positives'] = data['positives']      # overwrite positives
+                user_datas[user_id]._svm_temp['negatives'].update(data['negatives'])
+                user_datas[user_id]._svm_temp['negatives'] = user_datas[user_id]._svm_temp['negatives'].difference(user_datas[user_id]._svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
 
             # only operate on data displayed in interface
             displayed_ids = user_datas[user_id].index_to_id.values()
@@ -375,9 +373,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             vectors = initial_data['features'][displayed_idcs]
 
             # map positive_idcs and negative_idcs to displayed_idcs indexing
-            positive_ids = map(lambda x: user_datas[user_id].index_to_id[x], _svm_temp['positives'])
+            positive_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['positives'])
             positive_idcs = map(displayed_ids.index, positive_ids)
-            negative_ids = map(lambda x: user_datas[user_id].index_to_id[x], _svm_temp['negatives'])
+            negative_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['negatives'])
             negative_idcs = map(displayed_ids.index, negative_ids)
 
             neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
@@ -397,10 +395,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
 
             # save svm info for label prediction later
-            _svm_temp['svms'][-1] = (svm, group_id, thresh)
+            user_datas[user_id]._svm_temp['svms'][-1] = (svm, group_id, thresh)
 
             # make json
-            return_dict = {'group': _svm_temp['positives'],
+            return_dict = {'group': user_datas[user_id]._svm_temp['positives'],
                            'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
             return_dict = json.dumps(return_dict).encode()
             self.wfile.write(return_dict)  # body zurueckschicken

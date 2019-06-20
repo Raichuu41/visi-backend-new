@@ -40,11 +40,8 @@ limits = (-15, 15)
 max_display = 1000       # show at most max_display images in interface
 
 # global variables [legacy!]
-graph_df = None
 index_to_id = None
 _svm_temp = None
-net = None
-experiment_id = 'TEST_artist2'#'{}_{}'.format(time.strftime('%m-%d-%H-%M'), dataset_name)
 StartTime = time.time()
 
 # global variables [non-legacy...]
@@ -111,9 +108,7 @@ def dataset_id_to_name(ds_id):
 
 def reset():
     """Reset the global variables."""
-    global net, experiment_id
-    net = None
-    experiment_id = 'TEST_artist2'  # '{}_{}'.format(time.strftime('%m-%d-%H-%M'), dataset_name)
+    pass
 
 
 def generate_labels_and_weights():
@@ -235,7 +230,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt ihn zum konvertieren weiter
 
         """
-        global graph_df, index_to_id, _svm_temp
+        global user_datas
+        global index_to_id, _svm_temp
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -322,12 +318,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # shortcut for data access
             initial_data = initial_datas[user_datas[user_id].dataset]
 
-            graph_df = communication.make_graph_df(image_ids=initial_data['image_id'],
+            user_datas[user_id].graph_df = communication.make_graph_df(image_ids=initial_data['image_id'],
                                                    projection=initial_data['projection'],
                                                    info_df=initial_data['info'],
                                                    coordinate_range=limits)
 
-            graph_json = communication.graph_df_to_json(graph_df, max_elements=max_display)
+            graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=max_display)
             index_to_id = communication.make_index_to_id_dict(graph_json)
 
             # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
@@ -388,11 +384,11 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # save user labels
             user_labeled_ids = positive_ids + negative_ids
-            labels, weights = graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
+            labels, weights = user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
             new_labels = [group_id] * len(positive_ids) + [-group_id] * len(negative_ids)
             new_weights = np.ones(len(user_labeled_ids))
             labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
-            graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
+            user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
 
             # save svm info for label prediction later
             _svm_temp['svms'][-1] = (svm, group_id, thresh)

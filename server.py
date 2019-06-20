@@ -31,7 +31,7 @@ import pickle
 
 N_LAYERS = 2
 DATA_DIR = './dataset_info'
-IMPATH = None # should not be needed, since all features should be precomputed
+IMPATH = None                # should not be needed, since all features should be precomputed
 
 # lowercase constants [legacy!]
 feature_dim = 512
@@ -40,7 +40,6 @@ limits = (-15, 15)
 max_display = 1000       # show at most max_display images in interface
 
 # global variables [legacy!]
-index_to_id = None
 _svm_temp = None
 StartTime = time.time()
 
@@ -130,6 +129,9 @@ def generate_labels_and_weights():
 
 
 def update_coordinates(projection, socket_id, epoch=None):
+    """
+    used in `/startUpdateProjection` and store_projection()
+    """
     global graph_df, initial_data, limits
     # convert indexing of projection to
     min_epoch = 10
@@ -147,6 +149,9 @@ def update_coordinates(projection, socket_id, epoch=None):
 
 
 def store_projection(model, weightfile=None, use_gpu=True, socket_id=None):
+    """
+    used in `/startUpdateProjection`
+    """
     global graph_df, initial_data
     if weightfile is not None:
         state_dict = torch.load(weightfile, map_location='cpu')['state_dict']
@@ -231,7 +236,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
         """
         global user_datas
-        global index_to_id, _svm_temp
+        global _svm_temp
         if self.path == "/nodes":
             print("post /nodes")
             ### POST Request Header ###
@@ -324,7 +329,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                    coordinate_range=limits)
 
             graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=max_display)
-            index_to_id = communication.make_index_to_id_dict(graph_json)
+            user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
 
             # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
             self.wfile.write(graph_json)  #body zurueckschicken
@@ -349,6 +354,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             dataset_name = user_datas[user_id].dataset
             initial_data = initial_datas[dataset_name]
 
+
             group_id = int(data['groupId'])
             thresh = float(data['threshold'])
             if 'negatives' not in data.keys():          # first iteration
@@ -364,14 +370,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 _svm_temp['negatives'] = _svm_temp['negatives'].difference(_svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
 
             # only operate on data displayed in interface
-            displayed_ids = index_to_id.values()
+            displayed_ids = user_datas[user_id].index_to_id.values()
             displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
             vectors = initial_data['features'][displayed_idcs]
 
             # map positive_idcs and negative_idcs to displayed_idcs indexing
-            positive_ids = map(lambda x: index_to_id[x], _svm_temp['positives'])
+            positive_ids = map(lambda x: user_datas[user_id].index_to_id[x], _svm_temp['positives'])
             positive_idcs = map(displayed_ids.index, positive_ids)
-            negative_ids = map(lambda x: index_to_id[x], _svm_temp['negatives'])
+            negative_ids = map(lambda x: user_datas[user_id].index_to_id[x], _svm_temp['negatives'])
             negative_idcs = map(displayed_ids.index, negative_ids)
 
             neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
@@ -379,7 +385,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                                  k=-1, verbose=False)
 
             neighbor_ids = map(lambda x: displayed_ids[x], neighbor_idcs)                 # revert displayed_idcs indexing
-            id_to_index = dict(zip(index_to_id.values(), index_to_id.keys()))
+            id_to_index = dict(zip(user_datas[user_id].index_to_id.values(), user_datas[user_id].index_to_id.keys()))
             neighbor_idcs = map(lambda x: id_to_index[x], neighbor_ids)
 
             # save user labels

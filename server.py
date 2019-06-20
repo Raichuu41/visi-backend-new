@@ -30,39 +30,16 @@ from python_code.aux import scale_to_range, load_weights
 import pickle
 
 N_LAYERS = 2
+DATA_DIR = './dataset_info'
+IMPATH = None # should not be needed, since all features should be precomputed
 
-
-# initialize global dataset information (image ids, features, embedding) and network
-dataset_name = 'Wikiart_Elgammal_EQ_artist_train'
-data_dir = './dataset_info'
-data_info_file = os.path.join(data_dir, 'info_{}.h5'.format(dataset_name))
-label_file = None
-impath = None
-
+# lowercase constants [legacy!]
 feature_dim = 512
 projection_dim = 2
 limits = (-15, 15)
 max_display = 1000       # show at most max_display images in interface
-print('Initialize...')
-initializer = init.Initializer(dataset_name, impath=impath, info_file=data_info_file, feature_dim=feature_dim)
-initializer.initialize(dataset=impath is not None, is_test=dataset_name.endswith('_test'))
-initial_data = initializer.get_data_dict(normalize_features=True)
-if label_file is not None:
-    label_data = dd.io.load(label_file)
-    if not np.all(label_data['image_id'] == initial_data['image_id']):
-        raise RuntimeError('IDs in label_file do not match IDs in data_dict.')
-    label_none = label_data['labels_none']
-    label_svm = label_data['labels_svm']
-    generated_svm = label_svm[(label_none == 'None') & (label_svm != 'None')]
-    label_area = label_data['labels_area']
-    generated_area = label_area[(label_none == 'None') & (label_area != 'None')]
-    # add labels to info_file
-    info_df = initial_data['info']
-    for col, data in zip(['labeled', 'generated_svm', 'generated_area'], [label_none, generated_svm, generated_area]):
-        info_df[col] = None
-        info_df.loc[label_data['image_id'], col] = data
 
-print('Done.')
+# global variables [legacy!]
 graph_df = None
 index_to_id = None
 _svm_temp = None
@@ -70,21 +47,66 @@ net = None
 experiment_id = 'TEST_artist2'#'{}_{}'.format(time.strftime('%m-%d-%H-%M'), dataset_name)
 StartTime = time.time()
 
-class GlobalVarSaver():
-    """Namespace container class"""
-    def __init__(self):
-        pass
+# global variables [non-legacy...]
+initial_datas = {}
+current_dataset = {}
 
+# initialize global dataset information (image ids, features, embedding) and network
+label_file = None
+
+
+
+def initialize_dataset(dataset_name):
+    print('Initialize {}...'.format(dataset_name))
+    data_info_file = os.path.join(DATA_DIR, 'info_{}.h5'.format(dataset_name))
+    initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file, feature_dim=feature_dim)
+    initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'))
+    initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
+    """
+    if label_file is not None:
+        label_data = dd.io.load(label_file)
+        if not np.all(label_data['image_id'] == initial_data['image_id']):
+            raise RuntimeError('IDs in label_file do not match IDs in data_dict.')
+        label_none = label_data['labels_none']
+        label_svm = label_data['labels_svm']
+        generated_svm = label_svm[(label_none == 'None') & (label_svm != 'None')]
+        label_area = label_data['labels_area']
+        generated_area = label_area[(label_none == 'None') & (label_area != 'None')]
+        # add labels to info_file
+        info_df = initial_data['info']
+        for col, data in zip(['labeled', 'generated_svm', 'generated_area'], [label_none, generated_svm, generated_area]):
+            info_df[col] = None
+            info_df.loc[label_data['image_id'], col] = data
+    """
+    print('Done [{}].'.format(dataset_name))
+
+def dataset_id_to_name(ds_id):
+    "not needed anymore"
+    d = {'002': 'Wikiart_artist49_images',
+         '003': 'AwA2_vectors_train',
+         '004': 'AwA2_vectors_test',
+         '005': 'STL_label_train',     
+         '006': 'STL_label_test',
+         '011': 'STL_label_test_random',
+         '001': 'Wikiart_Elgammal_EQ_artist_test',
+         '008': 'Wikiart_Elgammal_EQ_artist_train',
+         '009': 'Wikiart_Elgammal_EQ_genre_train',
+         '010': 'Wikiart_Elgammal_EQ_genre_test'
+        }
+
+    return d[ds_id]
 
 def reset():
     """Reset the global variables."""
-    global dataframe, net, experiment_id
-    dataframe = None
+    global net, experiment_id
     net = None
     experiment_id = 'TEST_artist2'  # '{}_{}'.format(time.strftime('%m-%d-%H-%M'), dataset_name)
 
 
 def generate_labels_and_weights():
+    """
+    used in "/startUpdateEmbedding"
+    """
     global _svm_temp, graph_df, initial_data
 
     labels, weights = graph_df.loc[initial_data['image_id'], ('group', 'weight')].values.transpose()
@@ -174,32 +196,12 @@ class SetInterval:
         print('stop timer')
         self.stopEvent.set()
 
-
-"""
-def format_string(graph):
-    s = str(graph)
-    s = s.replace("'", '"').replace(': ', ':').replace('False', 'false').replace('True', 'true')\
-        .replace(', ', ',').replace(':u"', ':"')
-    return s
-"""
-
-"""
-### dev Server
-def get_graph(userData = []):
-    filename = "data/response_data.txt"
-    with open(filename, "rb") as f:
-        return f.read()
-"""
-
-id =''
-
 class MyHTTPHandler(BaseHTTPRequestHandler):
-
-
     """
     ### MyHTTPHandler beschreibt den Umgang mit HTTP Requests
     """
     #http://donghao.org/2015/06/18/override-the-__init__-of-basehttprequesthandler-in-python/
+
     def __init__(self, request, client_address, server):
         self.socket_id = ''
         self.inter = SetInterval(0.6, update_embedding_handler)
@@ -217,7 +219,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """
         definiert den Umgang mit POST Requests
-        Liest den Body aus - gibt in zum konvertieren weiter
+        Liest den Body aus - gibt ihn zum konvertieren weiter
 
         """
         global graph_df, index_to_id, _svm_temp
@@ -237,25 +239,34 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             data = json.loads(str(body).decode('utf-8'))  # python 2
             # data = json.loads(str(body, encoding='utf-8'))      # python 3
             
-            # print "\033[32;1m", "DATA:", data, "\033[0m" #DEBUG!
-
-
-            # here goes nothing!
+            # DEBUGging 'data'
+            # print "\033[32;1m", "DATA:", data, "\033[0m"
             print "data:", [(k, type(v)) for (k,v) in data.items()]
-            print initial_data["info"]
-
-
 
             reset() #???
 
-            """ # finetuning... not working yet with dim 512, but 4096 needs new feature files
             # Katjas code goes here
             weightfile = "./user_models/{}/".format(data["userId"])
             if not os.path.isdir(weightfile):
                 os.makedirs(weightfile)
             weightfile = os.path.join(weightfile, 'current_model.pth.tar')
             
-            if "nodes" in data.keys(): # not initial call
+            if "nodes" not in data.keys(): # initial call
+                # choose and note dataset for user
+                dataset_name = data["dataset"]
+                user_id = data["userId"]
+                current_dataset[user_id] = dataset_name
+
+                # if dataset not yet initialized, catch up
+                if dataset_name not in initial_datas:
+                    initialize_dataset(dataset_name)
+                
+                # shortcut for data access
+                initial_data = initial_datas[dataset_name]
+
+                #TODO: using initial data only here
+            else:                          # subsequent call
+                """ # finetuning... not working yet with dim 512, but 4096 needs new feature files
                 # load model
                 if os.path.isfile(weightfile): # not first iteration
                     model = mapnet(N_LAYERS, pretrained=False)
@@ -292,8 +303,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 proj = torch.stack(proj).numpy()
                 print "proj:", proj.shape, proj #DEBUG!
 
-            #TODO: use new projection
-            """
+                #TODO: use new projection
+                """
             
             graph_df = communication.make_graph_df(image_ids=initial_data['image_id'],
                                                    projection=initial_data['projection'],
@@ -303,9 +314,80 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             graph_json = communication.graph_df_to_json(graph_df, max_elements=max_display)
             index_to_id = communication.make_index_to_id_dict(graph_json)
 
-            print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
+            # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
             self.wfile.write(graph_json)  #body zurueckschicken
+        
+        if self.path == "/getGroupNeighbours":
+            print("post /getGroupNeighbours")
+            ### POST Request Header ###
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
 
+            # get body from request
+            content_len = int(self.headers['Content-Length'])
+            body = self.rfile.read(content_len)
+
+            # convert body to list
+            data = json.loads(str(body).decode('utf-8'))  # python 2
+            # data = json.loads(str(body, encoding='utf-8'))      # python 3
+
+            # choose right dataset
+            user_id = data['userId']
+            dataset_name = current_dataset[user_id]
+            initial_data = initial_datas[dataset_name]
+
+            group_id = int(data['groupId'])
+            thresh = float(data['threshold'])
+            if 'negatives' not in data.keys():          # first iteration
+                # reset _svm_temp
+                _svm_temp = {'positives': data['positives'],
+                             'negatives': set([]),              # allow no duplicates
+                             'svms': [] if _svm_temp is None else _svm_temp['svms']}
+                _svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
+
+            else:
+                _svm_temp['positives'] = data['positives']      # overwrite positives
+                _svm_temp['negatives'].update(data['negatives'])
+                _svm_temp['negatives'] = _svm_temp['negatives'].difference(_svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
+
+            # only operate on data displayed in interface
+            displayed_ids = index_to_id.values()
+            displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
+            vectors = initial_data['features'][displayed_idcs]
+
+            # map positive_idcs and negative_idcs to displayed_idcs indexing
+            positive_ids = map(lambda x: index_to_id[x], _svm_temp['positives'])
+            positive_idcs = map(displayed_ids.index, positive_ids)
+            negative_ids = map(lambda x: index_to_id[x], _svm_temp['negatives'])
+            negative_idcs = map(displayed_ids.index, negative_ids)
+
+            neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
+                                                                 max_rand_negatives=10,
+                                                                 k=-1, verbose=False)
+
+            neighbor_ids = map(lambda x: displayed_ids[x], neighbor_idcs)                 # revert displayed_idcs indexing
+            id_to_index = dict(zip(index_to_id.values(), index_to_id.keys()))
+            neighbor_idcs = map(lambda x: id_to_index[x], neighbor_ids)
+
+            # save user labels
+            user_labeled_ids = positive_ids + negative_ids
+            labels, weights = graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
+            new_labels = [group_id] * len(positive_ids) + [-group_id] * len(negative_ids)
+            new_weights = np.ones(len(user_labeled_ids))
+            labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
+            graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
+
+            # save svm info for label prediction later
+            _svm_temp['svms'][-1] = (svm, group_id, thresh)
+
+            # make json
+            return_dict = {'group': _svm_temp['positives'],
+                           'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
+            return_dict = json.dumps(return_dict).encode()
+            self.wfile.write(return_dict)  # body zurueckschicken
+
+        """
         if self.path == "/trainSvm":
             print("post /trainsvm")
             ### POST Request Header ###
@@ -376,70 +458,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             #data = json.dumps({}).encode()
             self.wfile.write(data)  #body zurueckschicken
 
-        if self.path == "/getGroupNeighbours":
-            print("post /getGroupNeighbours")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
 
-            # get body from request
-            content_len = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_len)
-
-            # convert body to list
-            data = json.loads(str(body).decode('utf-8'))  # python 2
-            # data = json.loads(str(body, encoding='utf-8'))      # python 3
-
-            group_id = int(data['groupId'])
-            thresh = float(data['threshold'])
-            if 'negatives' not in data.keys():          # first iteration
-                # reset _svm_temp
-                _svm_temp = {'positives': data['positives'],
-                             'negatives': set([]),              # allow no duplicates
-                             'svms': [] if _svm_temp is None else _svm_temp['svms']}
-                _svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
-
-            else:
-                _svm_temp['positives'] = data['positives']      # overwrite positives
-                _svm_temp['negatives'].update(data['negatives'])
-                _svm_temp['negatives'] = _svm_temp['negatives'].difference(_svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
-
-            # only operate on data displayed in interface
-            displayed_ids = index_to_id.values()
-            displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
-            vectors = initial_data['features'][displayed_idcs]
-
-            # map positive_idcs and negative_idcs to displayed_idcs indexing
-            positive_ids = map(lambda x: index_to_id[x], _svm_temp['positives'])
-            positive_idcs = map(displayed_ids.index, positive_ids)
-            negative_ids = map(lambda x: index_to_id[x], _svm_temp['negatives'])
-            negative_idcs = map(displayed_ids.index, negative_ids)
-
-            neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
-                                                                 max_rand_negatives=10,
-                                                                 k=-1, verbose=False)
-
-            neighbor_ids = map(lambda x: displayed_ids[x], neighbor_idcs)                 # revert displayed_idcs indexing
-            id_to_index = dict(zip(index_to_id.values(), index_to_id.keys()))
-            neighbor_idcs = map(lambda x: id_to_index[x], neighbor_ids)
-
-            # save user labels
-            user_labeled_ids = positive_ids + negative_ids
-            labels, weights = graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
-            new_labels = [group_id] * len(positive_ids) + [-group_id] * len(negative_ids)
-            new_weights = np.ones(len(user_labeled_ids))
-            labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
-            graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
-
-            # save svm info for label prediction later
-            _svm_temp['svms'][-1] = (svm, group_id, thresh)
-
-            # make json
-            return_dict = {'group': _svm_temp['positives'],
-                           'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
-            return_dict = json.dumps(return_dict).encode()
-            self.wfile.write(return_dict)  # body zurueckschicken
 
 
         if self.path == "/startUpdateEmbedding":
@@ -535,6 +554,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
+        
+        """
 
         return
 

@@ -49,12 +49,25 @@ StartTime = time.time()
 
 # global variables [non-legacy...]
 initial_datas = {}
-current_dataset = {}
+user_datas = {}
 
 # initialize global dataset information (image ids, features, embedding) and network
 label_file = None
 
-
+class UserData:
+    """
+    stores data per user, which was previously handled globally
+    """
+    def __init__(self, user_id):
+        print "[[ creating user {} ]]".format(user_id) #DEBUG!
+        self.user_id = user_id
+        self.dataset = None      # dataset the user is working on
+        self.index_to_id = None
+        self._svm_temp = None
+        self.graph_df = None
+    
+    def __repr__(self):
+        return "<UserData({}) at {}>".format(self.user_id, id(self))
 
 def initialize_dataset(dataset_name):
     print('Initialize {}...'.format(dataset_name))
@@ -250,19 +263,19 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             if not os.path.isdir(weightfile):
                 os.makedirs(weightfile)
             weightfile = os.path.join(weightfile, 'current_model.pth.tar')
+
+            user_id = data["userId"]
             
             if "nodes" not in data.keys(): # initial call
                 # choose and note dataset for user
                 dataset_name = data["dataset"]
-                user_id = data["userId"]
-                current_dataset[user_id] = dataset_name
+                if user_id not in user_datas:
+                    user_datas[user_id] = UserData(user_id)
+                user_datas[user_id].dataset = dataset_name
 
                 # if dataset not yet initialized, catch up
                 if dataset_name not in initial_datas:
                     initialize_dataset(dataset_name)
-                
-                # shortcut for data access
-                initial_data = initial_datas[dataset_name]
 
                 #TODO: using initial data only here
             else:                          # subsequent call
@@ -306,6 +319,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 #TODO: use new projection
                 """
             
+            # shortcut for data access
+            initial_data = initial_datas[user_datas[user_id].dataset]
+
             graph_df = communication.make_graph_df(image_ids=initial_data['image_id'],
                                                    projection=initial_data['projection'],
                                                    info_df=initial_data['info'],
@@ -334,7 +350,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             # choose right dataset
             user_id = data['userId']
-            dataset_name = current_dataset[user_id]
+            dataset_name = user_datas[user_id].dataset
             initial_data = initial_datas[dataset_name]
 
             group_id = int(data['groupId'])

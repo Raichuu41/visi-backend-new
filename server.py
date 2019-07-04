@@ -36,14 +36,14 @@ FEATURE_DIM    = 512
 PROJECTION_DIM = 2
 LIMITS         = (-15, 15)
 MAX_DISPLAY    = 1000       # show at most MAX_DISPLAY images in interface
-START_TIME = time.time()
+START_TIME     = time.time()
 
 # global variables
-initial_datas = {}   # 
+initial_datas = {}
 user_datas = {}
 
 # initialize global dataset information (image ids, features, embedding) and network
-label_file = None
+# label_file = None
 
 class UserData:
     """

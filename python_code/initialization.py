@@ -6,11 +6,13 @@ import torchvision
 import deepdish as dd
 import pandas as pd
 import pickle
+import json
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.decomposition import PCA
 from umap import UMAP
 from copy import copy
+from collections import OrderedDict
 
 from model import load_featurenet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
 from dataset import load_ImageDataset, ImageDataset
@@ -40,19 +42,24 @@ class Initializer(object):
         self._dataset = None
         self._pca = None
 
-        self.data_dir = os.path.join(outdir, 'dataset_info')
+        # self.data_dir = os.path.join(outdir, 'dataset_info')
+        self.data_dir = outdir
         self.feature_dir = os.path.join(outdir, 'features')
-        self.projection_dir = os.path.join(outdir, 'initial_projections')
+        # self.projection_dir = os.path.join(outdir, 'initial_projections')
+        self.projection_dir = None # look, where this makes problems
 
-        self.normalization_file = os.path.join(self.data_dir, '{}_mean_std.pkl'.format(self.dataset_name))
+        # self.normalization_file = os.path.join(self.data_dir, '{}_mean_std.pkl'.format(self.dataset_name))
+        self.normalization_file = os.path.join(outdir, 'norm/{}_mean_std.pkl'.format(self.dataset_name))
         self.feature_file = os.path.join(self.feature_dir,
                                          '{}.h5'.format(self.dataset_name) if self.feature_dim is None else
                                          '{}_{}.h5'.format(self.dataset_name, self.feature_dim)
                                          )
         self.N_multi_features = N_multi_features
         self.multi_feature_file = self.feature_file.replace('.h5', '_multi.h5')
-        self.projection_file = os.path.join(self.projection_dir, '{}.h5'.format(self.dataset_name))
+        # self.projection_file = os.path.join(self.projection_dir, '{}.h5'.format(self.dataset_name))
+        self.projection_file = None # look, where this makes problems
 
+    """
     @staticmethod
     def get_info(info_file):
         if info_file is None or not os.path.isfile(info_file):
@@ -65,6 +72,20 @@ class Initializer(object):
         if 'image_id' in info.keys():
             info = info.set_index('image_id')
         return info
+    """
+
+    @staticmethod
+    def get_info(info_file):
+        if info_file is None or not os.path.isfile(info_file):
+            return None
+        d = json.load(open(info_file, 'r'))
+        # make ordered {image_id: label} dict
+        d2 = OrderedDict((k, v['label']) for k,v in sorted(d['nodes'].iteritems(), key=lambda x: x[1]['idx']))
+        df = pd.DataFrame.from_dict(d2, orient='index')
+        df.index.names = [u'image_id']
+        # using DataFrame here to keep Katjas data handling
+
+        return df
 
     def make_dataset(self, normalize=True, imsize=(224, 224), transform_list=None):
         if self.impath is None or not os.path.isdir(self.impath):

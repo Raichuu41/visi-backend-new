@@ -266,9 +266,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     initialize_dataset(dataset_name)
 
                 #TODO: using initial data only here
-            else:                          # subsequent call
-                """ # finetuning... not working yet with dim 512, but 4096 needs new feature files
+            # else:                          # subsequent call
+            elif False: #DEBUG!
+                # finetuning... not working yet with dim 512, but 4096 needs new feature files
                 # load model
+                initial_data = initial_datas[user_datas[user_id].dataset
+
                 if os.path.isfile(weightfile): # not first iteration
                     model = mapnet(N_LAYERS, pretrained=False)
                     best_weights = load_weights(weightfile, model.state_dict())
@@ -277,14 +280,17 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
                 model.cuda()
 
-                # gen labels
+                """# gen labels [OLD]
                 lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
                 lbl.sort(key=lambda x:x[0])
                 idx, lbl = zip(*lbl)
                 assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
                 lbl = [x if x is not None else 0 for x in lbl]
                 lbl = np.array(lbl, dtype=np.long)
-
+                """
+                # gen labels sorting via image_id
+                lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
+                lbl = np.array([lbl_dict[x] for x in initial_data['image_id']]])
                 print "shapes:", initial_data["features"].shape, lbl.shape
 
                 # train.train_mapnet(model, initial_data["features"], lbl, verbose=True, outpath=weightfile)
@@ -305,7 +311,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 print "proj:", proj.shape, proj #DEBUG!
 
                 #TODO: use new projection
-                """
             
             # shortcut for data access
             initial_data = initial_datas[user_datas[user_id].dataset]

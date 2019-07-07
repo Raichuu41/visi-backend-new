@@ -30,7 +30,7 @@ from python_code.aux import scale_to_range, load_weights
 import pickle
 
 N_LAYERS       = 2
-DATA_DIR       = './dataset_info'
+DATA_DIR       = sys.argv[1]
 IMPATH         = None       # should not be needed, since all features should be precomputed
 FEATURE_DIM    = 512
 PROJECTION_DIM = 2
@@ -62,8 +62,9 @@ class UserData:
 
 def initialize_dataset(dataset_name):
     print('Initialize {}...'.format(dataset_name))
-    data_info_file = os.path.join(DATA_DIR, 'info_{}.h5'.format(dataset_name))
-    initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file, feature_dim=FEATURE_DIM)
+    data_info_file = os.path.join(DATA_DIR, '{}.json'.format(dataset_name))
+    initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file,
+                                   feature_dim=FEATURE_DIM, outdir=DATA_DIR)
     initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'))
     initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
     """

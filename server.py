@@ -270,7 +270,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             elif False: #DEBUG!
                 # finetuning... not working yet with dim 512, but 4096 needs new feature files
                 # load model
-                initial_data = initial_datas[user_datas[user_id].dataset
+                initial_data = initial_datas[user_datas[user_id].dataset]
 
                 if os.path.isfile(weightfile): # not first iteration
                     model = mapnet(N_LAYERS, pretrained=False)

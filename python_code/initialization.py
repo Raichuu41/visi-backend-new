@@ -84,7 +84,6 @@ class Initializer(object):
         df = pd.DataFrame.from_dict(d2, orient='index')
         df.index.names = [u'image_id']
         # using DataFrame here to keep Katjas data handling
-
         return df
 
     def make_dataset(self, normalize=True, imsize=(224, 224), transform_list=None):
@@ -324,6 +323,7 @@ class Initializer(object):
             if len(self.info) != len(image_id):
                 raise RuntimeWarning('Image IDs in info file and feature file do not match.')
 
+        """ # should not be needed with projections in new JSON-Files
         if os.path.isfile(self.projection_file):
             p_data = dd.io.load(self.projection_file)
             if not np.all(image_id == p_data['image_id']):
@@ -336,7 +336,7 @@ class Initializer(object):
                     dd.io.save(self.projection_file, p_data)
                 else:
                     raise RuntimeWarning('Projection file does not match feature file.')
-
+        """
     @staticmethod
     def get_projection(features, projection_dim=2, verbose=False, random_state=123):
         projector = UMAP(n_neighbors=30, n_components=projection_dim, min_dist=0.1, random_state=random_state,
@@ -355,6 +355,7 @@ class Initializer(object):
         if self.verbose:
             print('Saved projection to {}'.format(self.projection_file))
 
+    """
     def set_projection_file(self, projection_file):
         if not os.path.isfile(projection_file):
             raise IOError('Projection file not found.')
@@ -381,6 +382,7 @@ class Initializer(object):
                     dd.io.save(self.feature_file, f_data)
                 else:
                     raise RuntimeWarning('Feature file does not match projection file.')
+    """
 
     def get_data_dict(self, normalize_features=True):
         data_dict = dict.fromkeys(['image_id', 'features', 'projection', 'info'])
@@ -419,7 +421,7 @@ class Initializer(object):
                     data_dict['multi_features'] /= np.linalg.norm(data_dict['multi_features'], axis=2, keepdims=True)
                 else:
                     data_dict['multi_features'] /= np.linalg.norm(data_dict['multi_features'], axis=1, keepdims=True)
-
+        """ #OLD
         if os.path.isfile(self.projection_file):
             data = dd.io.load(self.projection_file)
             if data_dict['image_id'] is not None:       # check if indexing is correct
@@ -428,6 +430,11 @@ class Initializer(object):
             else:
                 data_dict['image_id'] = data['image_id']
             data_dict['projection'] = data['projection']
+        """
+        if self.info_file is not None and os.path.isfile(self.info_file):
+            data = json.load(open(self.info_file, 'r'))
+            proj = [[data['nodes'][image_id]['x'], data['nodes'][image_id]['y']] for image_id in data_dict['image_id']]
+            data_dict['projection'] = np.array(proj)
 
         if self.info is not None:
             if data_dict['image_id'] is None:
@@ -469,9 +476,11 @@ class Initializer(object):
                 else:
                     self.make_feature_file(batchsize=16)
 
+        """ # TODO: make projections renewable
         if projection:
             if not os.path.isfile(self.projection_file):
                 self.make_projection_file()
+        """
 
         if multi_features:
             if not os.path.isfile(self.multi_feature_file):

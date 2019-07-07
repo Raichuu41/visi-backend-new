@@ -290,7 +290,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 """
                 # gen labels sorting via image_id
                 lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
-                lbl = np.array([lbl_dict[x] for x in initial_data['image_id']]])
+                lbl = np.array([lbl_dict[x] for x in initial_data['image_id']])
                 print "shapes:", initial_data["features"].shape, lbl.shape
 
                 # train.train_mapnet(model, initial_data["features"], lbl, verbose=True, outpath=weightfile)

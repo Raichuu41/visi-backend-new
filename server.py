@@ -219,6 +219,31 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-type')
 
         self.end_headers()
+    
+    def do_GET(self):
+        # by julian
+        if "/getNodes" in self.path:
+            print("GET /getNodes")
+            ### POST Request Header ###
+            self.send_response(200)
+            # self.send_header('Content-type', 'application/json')
+            #self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
+            self.end_headers()
+
+            # get query from paths
+            query = self.path.split('?')[1]
+            # check for more than one param
+            if("&" in self.path): 
+                return self.wfile.write("ERROR: API /getNodes does not allow multi params")
+            # get file name from query and add .json ending
+            fileName = query.split('=')[1] + '.json'
+            
+            file = os.path.join(DATA_DIR, fileName)
+            print('Request file: ' + file)
+            
+            with open(file, 'rb') as file: 
+                self.wfile.write(file.read()) # Read the file and send the contents 
+            # self.wfile.write("Hello World !" + filePath)
 
     def do_POST(self):
         """
@@ -254,7 +279,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             user_id = data["userId"]
             
-            if "nodes" not in data.keys(): # initial call
+            if "init" in data.keys() and data['init'] == True: # initial call
                 # choose and note dataset for user
                 dataset_name = data["dataset"]
                 if user_id not in user_datas:

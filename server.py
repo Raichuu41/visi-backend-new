@@ -66,7 +66,7 @@ def initialize_dataset(dataset_name):
     data_info_file = os.path.join(DATA_DIR, '{}.json'.format(dataset_name))
     initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file,
                                    feature_dim=FEATURE_DIM, outdir=DATA_DIR)
-    initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'))
+    initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'), raw_features=True)
     initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
     """
     if label_file is not None:
@@ -321,12 +321,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     """
                     # gen labels sorting via image_id
                     lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
-                    id_feat  = zip(initial_data['image_id'], initial_data['features'])
-                    labels, features = zip(*[(lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
-                    unique, labels   = np.unique(labels, return_inverse=True) # works only in python 2.7, since None < all
+                    id_feat  = zip(initial_data['image_id'], initial_data['features_raw'])
+                    ids, labels, features = zip(*[(name, lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
+                    unique, labels = np.unique(labels, return_inverse=True) # works only in python 2.7, since None < all
                     labels   = np.array(labels) if None in unique else np.array(labels) + 1 # ensure empty label is 0
                     features = np.array(features)
-                    print "shapes/types [feat, lbl]:", features.shape, features.dtype, labels.shape, labels.dtype
+                    del lbl_dict, id_feat, unique
 
                     train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
                 
@@ -336,20 +336,24 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     dl = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False, num_workers=2)
                     proj = []
                     for item in dl:
-                        # print "item:", item, len(item) #DEBUG!
                         item = item[0].cuda()
-                        print "item shape:", item.shape
                         fts = model.mapping.forward(item)
-                        print "fts shape:", fts.shape
                         fts = fts / fts.norm(dim=1, keepdim=True)
                         proj.append(model.embedder.forward(fts).cpu())
-                    proj = torch.stack(proj).numpy()
-                    print "proj:", proj.shape, proj #DEBUG!
+                    proj = torch.cat(proj).detach().numpy()
 
-                    #TODO: use new projection
+                    # reply with new projection
+                    user_datas[user_id].graph_df = communication.make_graph_df(
+                                            image_ids=ids, projection=proj,
+                                            info_df=initial_data['info'],
+                                            coordinate_range=LIMITS)
+                    graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
+                    user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
+                    self.wfile.write(graph_json)
+                    return
             
             # shortcut for data access
-            initial_data = initial_datas[user_datas[user_id].dataset]
+            # initial_data = initial_datas[user_datas[user_id].dataset]
 
             user_datas[user_id].graph_df = communication.make_graph_df(
                                             image_ids=initial_data['image_id'],

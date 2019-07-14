@@ -37,6 +37,7 @@ PROJECTION_DIM = 2
 LIMITS         = (-15, 15)
 MAX_DISPLAY    = 1000       # show at most MAX_DISPLAY images in interface
 START_TIME     = time.time()
+DEVICE         = 2
 
 # global variables
 initial_datas = {}
@@ -243,7 +244,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             
             with open(file, 'rb') as file: 
                 self.wfile.write(file.read()) # Read the file and send the contents 
-            # self.wfile.write("Hello World !" + filePath)
 
     def do_POST(self):
         """
@@ -271,13 +271,17 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # print "\033[32;1m", "DATA:", data, "\033[0m"
             print "data:", [(k, type(v)) for (k,v) in data.items()]
 
+            try:
+                user_id = data["userId"]
+            except KeyError:
+                user_id = 0      #DEBUG
+                print "No `userId` given, assigning 0."
+
             # Katjas code goes here
-            weightfile = "./user_models/{}/".format(data["userId"])
+            weightfile = "./user_models/{}/".format(user_id)
             if not os.path.isdir(weightfile):
                 os.makedirs(weightfile)
             weightfile = os.path.join(weightfile, 'current_model.pth.tar')
-
-            user_id = data["userId"]
             
             if "init" in data.keys() and data['init'] == True: # initial call
                 # choose and note dataset for user
@@ -289,53 +293,60 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # if dataset not yet initialized, catch up
                 if dataset_name not in initial_datas:
                     initialize_dataset(dataset_name)
+                
+                self.wfile.write('{"done": true}')
+                return
 
-                #TODO: using initial data only here
-            # else:                          # subsequent call
-            elif False: #DEBUG!
+            else:                          # subsequent call
                 # finetuning... not working yet with dim 512, but 4096 needs new feature files
                 # load model
-                initial_data = initial_datas[user_datas[user_id].dataset]
+                with torch.cuda.device(DEVICE):
+                    initial_data = initial_datas[user_datas[user_id].dataset]
 
-                if os.path.isfile(weightfile): # not first iteration
-                    model = mapnet(N_LAYERS, pretrained=False)
-                    best_weights = load_weights(weightfile, model.state_dict())
-                    model.load_state_dict(best_weights)
-                else: # first iteration
-                    model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
-                model.cuda()
+                    if os.path.isfile(weightfile): # not first iteration
+                        model = mapnet(N_LAYERS, pretrained=False)
+                        best_weights = load_weights(weightfile, model.state_dict())
+                        model.load_state_dict(best_weights)
+                    else: # first iteration
+                        model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
+                    model.cuda()
 
-                """# gen labels [OLD]
-                lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
-                lbl.sort(key=lambda x:x[0])
-                idx, lbl = zip(*lbl)
-                assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
-                lbl = [x if x is not None else 0 for x in lbl]
-                lbl = np.array(lbl, dtype=np.long)
-                """
-                # gen labels sorting via image_id
-                lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
-                lbl = np.array([lbl_dict[x] for x in initial_data['image_id']])
-                print "shapes:", initial_data["features"].shape, lbl.shape
+                    """# gen labels [OLD]
+                    lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
+                    lbl.sort(key=lambda x:x[0])
+                    idx, lbl = zip(*lbl)
+                    assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
+                    lbl = [x if x is not None else 0 for x in lbl]
+                    lbl = np.array(lbl, dtype=np.long)
+                    """
+                    # gen labels sorting via image_id
+                    lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
+                    id_feat  = zip(initial_data['image_id'], initial_data['features'])
+                    labels, features = zip(*[(lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
+                    unique, labels   = np.unique(labels, return_inverse=True) # works only in python 2.7, since None < all
+                    labels   = np.array(labels) if None in unique else np.array(labels) + 1 # ensure empty label is 0
+                    features = np.array(features)
+                    print "shapes/types [feat, lbl]:", features.shape, features.dtype, labels.shape, labels.dtype
 
-                # train.train_mapnet(model, initial_data["features"], lbl, verbose=True, outpath=weightfile)
-            
-                # generate projection with new model
-                model.eval()
-                ds = torch.utils.data.TensorDataset(torch.tensor(initial_data["features"]))
-                dl = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False, num_workers=2)
-                proj = []
-                for item in dl:
-                    # print "item:", item, len(item) #DEBUG!
-                    item = item[0].cuda()
-                    print "shape:", item.shape
-                    fts = model.mapping.forward(item)
-                    fts = fts / fts.norm(dim=1, keepdim=True)
-                    proj.append(model.embedder.forward(fts).cpu())
-                proj = torch.stack(proj).numpy()
-                print "proj:", proj.shape, proj #DEBUG!
+                    train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
+                
+                    # generate projection with new model
+                    model.eval()
+                    ds = torch.utils.data.TensorDataset(torch.tensor(features))
+                    dl = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False, num_workers=2)
+                    proj = []
+                    for item in dl:
+                        # print "item:", item, len(item) #DEBUG!
+                        item = item[0].cuda()
+                        print "item shape:", item.shape
+                        fts = model.mapping.forward(item)
+                        print "fts shape:", fts.shape
+                        fts = fts / fts.norm(dim=1, keepdim=True)
+                        proj.append(model.embedder.forward(fts).cpu())
+                    proj = torch.stack(proj).numpy()
+                    print "proj:", proj.shape, proj #DEBUG!
 
-                #TODO: use new projection
+                    #TODO: use new projection
             
             # shortcut for data access
             initial_data = initial_datas[user_datas[user_id].dataset]

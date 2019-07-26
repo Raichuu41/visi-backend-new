@@ -29,7 +29,7 @@ from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
 import pickle
 
-N_LAYERS       = 2
+N_LAYERS       = 0
 DATA_DIR       = sys.argv[1]
 IMPATH         = None       # should not be needed, since all features should be precomputed
 FEATURE_DIM    = 512
@@ -39,6 +39,15 @@ MAX_DISPLAY    = 1000       # show at most MAX_DISPLAY images in interface
 START_TIME     = time.time()
 DEVICE         = 2
 
+SPLASH = """
++-------------------------------------------+
+| #   # ##### ##### ##### ##### #   # ##### |
+| #   #   #   #       #   #      # #  #   # |
+|  # #    #   #####   #   ###     #   ##### |
+|  # #    #       #   #   #      # #  #     |
+|   #   ##### ##### ##### ##### #   # #     |
++-------------------------------------------+
+"""
 # global variables
 initial_datas = {}
 user_datas = {}
@@ -173,6 +182,11 @@ def update_embedding_handler(socket_id):
     response = requests.post("http://localhost:3000/api/v1/updateEmbedding", data=json.dumps(payload), headers=headers)
     print(response)
 
+def weightfile_path(uid, d_name, make_dirs=True):
+    weightfile = "./user_models/{}/".format(uid)
+    if make_dirs and not os.path.isdir(weightfile):
+        os.makedirs(weightfile)
+    return os.path.join(weightfile, '{}_model.pth.tar'.format(d_name))
 
 class SetInterval:
     """
@@ -269,7 +283,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             
             # DEBUGging 'data'
             # print "\033[32;1m", "DATA:", data, "\033[0m"
-            print "data:", [(k, type(v)) for (k,v) in data.items()]
+            print "  -> data:", [(k, type(v)) for (k,v) in data.items()]
 
             try:
                 user_id = data["userId"]
@@ -278,12 +292,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 print "No `userId` given, assigning 0."
 
             # Katjas code goes here
-            weightfile = "./user_models/{}/".format(user_id)
-            if not os.path.isdir(weightfile):
-                os.makedirs(weightfile)
-            weightfile = os.path.join(weightfile, 'current_model.pth.tar')
             
-            if "init" in data.keys() and data['init'] == True: # initial call
+            if "init" in data.keys(): # initial call
                 # choose and note dataset for user
                 dataset_name = data["dataset"]
                 if user_id not in user_datas:
@@ -293,7 +303,26 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # if dataset not yet initialized, catch up
                 if dataset_name not in initial_datas:
                     initialize_dataset(dataset_name)
+                initial_data = initial_datas[dataset_name]
                 
+                # set attributes for katja legacy and svm training
+                user_datas[user_id].graph_df = communication.make_graph_df(
+                                            image_ids=initial_data['image_id'],
+                                            projection=initial_data['projection'],
+                                            info_df=initial_data['info'],
+                                            coordinate_range=LIMITS)
+
+                graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
+                user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
+                
+                # delete old model
+                weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
+                if os.path.isfile(weightfile) and data['init'] == 'new':
+                    print("DEBUG!! removing old model")
+                    os.remove(weightfile)
+                else:
+                    print("DEBUG!! keeping old model")
+
                 self.wfile.write('{"done": true}')
                 return
 
@@ -301,7 +330,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # finetuning... not working yet with dim 512, but 4096 needs new feature files
                 # load model
                 with torch.cuda.device(DEVICE):
-                    initial_data = initial_datas[user_datas[user_id].dataset]
+                    dataset_name = user_datas[user_id].dataset
+                    initial_data = initial_datas[dataset_name]
+
+                    weightfile = weightfile_path(user_id, dataset_name)
 
                     if os.path.isfile(weightfile): # not first iteration
                         model = mapnet(N_LAYERS, pretrained=False)
@@ -351,18 +383,18 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
                     self.wfile.write(graph_json)
                     return
-            
+            """
+            else: # no 'init' in `data`
+                print("ERROR: No init given")
+                self.wfile.write("{'error': 'no init-flag given'}")
+                return
+            """
+
+
             # shortcut for data access
             # initial_data = initial_datas[user_datas[user_id].dataset]
 
-            user_datas[user_id].graph_df = communication.make_graph_df(
-                                            image_ids=initial_data['image_id'],
-                                            projection=initial_data['projection'],
-                                            info_df=initial_data['info'],
-                                            coordinate_range=LIMITS)
-
-            graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
-            user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
+            
 
             # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
             self.wfile.write(graph_json)  #body zurueckschicken
@@ -381,7 +413,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # convert body to list
             data = json.loads(str(body).decode('utf-8'))  # python 2
             # data = json.loads(str(body, encoding='utf-8'))      # python 3
-
+            
+            #DEBUG!
+            print "\033[32;1m", "DATA:", data, "\033[0m"
+            
             # choose right dataset
             user_id = data['userId']
             dataset_name = user_datas[user_id].dataset
@@ -609,6 +644,7 @@ if __name__ == "__main__":
     # config
     HOST_NAME = ""
     PORT_NUMBER = 8000
+    print(SPLASH)
     try:
         http_server = HTTPServer((HOST_NAME, PORT_NUMBER), MyHTTPHandler)
         print(time.asctime(), 'Server Starts - %s:%s' % (HOST_NAME, PORT_NUMBER), '- Beenden mit STRG+C')

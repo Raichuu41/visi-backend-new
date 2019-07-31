@@ -49,7 +49,8 @@ class Initializer(object):
         self.projection_dir = None # look, where this makes problems
 
         # self.normalization_file = os.path.join(self.data_dir, '{}_mean_std.pkl'.format(self.dataset_name))
-        self.normalization_file = os.path.join(outdir, 'norm/{}_mean_std.pkl'.format(self.dataset_name))
+        self.normalization_path = os.path.join(outdir, 'norm')
+        self.normalization_file = os.path.join(self.normalization_path, '{}_mean_std.pkl'.format(self.dataset_name))
         self.feature_file = os.path.join(self.feature_dir,
                                          '{}.h5'.format(self.dataset_name) if self.feature_dim is None else
                                          '{}_{}.h5'.format(self.dataset_name, self.feature_dim)
@@ -131,8 +132,8 @@ class Initializer(object):
                                          torchvision.transforms.ToTensor()
                                      ]))
         if self.verbose:
-            print('Compute normalization file...')
-        compute_mean_std(self._dataset, filename=self.dataset_name, outdir=self.data_dir, verbose=self.verbose)
+            print('Compute normalization file...[{}]'.format(len(self._dataset)))
+        compute_mean_std(self._dataset, filename=self.dataset_name, outdir=self.normalization_path, verbose=self.verbose)
         if self.verbose:
             print('Done.')
 
@@ -339,17 +340,22 @@ class Initializer(object):
         """
     @staticmethod
     def get_projection(features, projection_dim=2, verbose=False, random_state=123):
+        print "DEBUG!! feat:{}".format(features)
         projector = UMAP(n_neighbors=30, n_components=projection_dim, min_dist=0.1, random_state=random_state,
                          verbose=verbose)
         return projector.fit_transform(features)
-
-    def make_projection_file(self, **get_projection_kwargs):
+    
+    def make_projection_dict(self, **get_projection_kwargs):
         if not os.path.isfile(self.feature_file):
             raise RuntimeError('Feature file not found. Please call "make_feature_file" before starting or use the'
                                '"get_projection" method.')
         data = dd.io.load(self.feature_file)
+        print "DEBUG!! data:{}".format(data)
         projection = self.get_projection(data['features'], verbose=self.verbose, **get_projection_kwargs)
-        out_dict = {'image_id': data['image_id'], 'projection': projection}
+        return {'image_id': data['image_id'], 'projection': projection}
+
+    def make_projection_file(self, **get_projection_kwargs):
+        outdict = self.make_projection_dict(**get_projection_kwargs)
         dd.io.save(self.projection_file, out_dict)
 
         if self.verbose:
@@ -454,6 +460,7 @@ class Initializer(object):
     def initialize(self, dataset=True, features=True, projection=True, multi_features=False, raw_features=False,
                    is_test=False):
         if dataset:
+            print "DEBUG!! normfile:`{}`".format(self.normalization_file)
             if not os.path.isfile(self.normalization_file):
                 if is_test:
                     normalization_file = self.normalization_file.replace('_test', '_train')

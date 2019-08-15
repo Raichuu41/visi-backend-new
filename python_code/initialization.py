@@ -507,6 +507,7 @@ class Initializer(object):
                 data_dict = dd.io.load(self.feature_file)
                 exists = 'raw' in data_dict.keys()
             if not exists:
+                print("DEBUG! file: {}, exists: {}".format(self.feature_file, exists))
                 self.make_raw_feature_file(batchsize=16)
 
 

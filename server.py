@@ -35,7 +35,7 @@ IMPATH         = None       # should not be needed, since all features should be
 FEATURE_DIM    = 512
 PROJECTION_DIM = 2
 LIMITS         = (-15, 15)
-MAX_DISPLAY    = 1000       # show at most MAX_DISPLAY images in interface
+MAX_DISPLAY    = None       # show at most MAX_DISPLAY images in interface (None == don't cut anything)
 START_TIME     = time.time()
 DEVICE         = 2
 
@@ -110,6 +110,26 @@ def dataset_id_to_name(ds_id):
         }
 
     return d[ds_id]
+
+def generate_projections(model, features):
+    if type(model) is str:
+        model = load_model(model)
+    model.eval()
+    model.cuda()
+    ds = torch.utils.data.TensorDataset(torch.tensor(features))
+    dl = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False, num_workers=2)
+    proj = []
+    for item in dl:
+        item = item[0].cuda()
+        fts = model.mapping.forward(item)
+        fts = fts / fts.norm(dim=1, keepdim=True)
+        proj.append(model.embedder.forward(fts).cpu())
+    return torch.cat(proj).detach().numpy()
+
+def load_model(weightfile):
+    model = mapnet(N_LAYERS, pretrained=False)
+    best_weights = load_weights(weightfile, model.state_dict())
+    model.load_state_dict(best_weights)
 
 def generate_labels_and_weights():
     """
@@ -266,212 +286,231 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         """
         global user_datas
         if self.path == "/nodes":
-            print("post /nodes")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            #self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
-            self.end_headers()
-
-            # get body from request
-            content_len = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_len)
-
-            # convert body to list
-            data = json.loads(str(body).decode('utf-8'))  # python 2
-            # data = json.loads(str(body, encoding='utf-8'))      # python 3
-            
-            # DEBUGging 'data'
-            # print "\033[32;1m", "DATA:", data, "\033[0m"
-            print "  -> data:", [(k, type(v)) for (k,v) in data.items()]
-
             try:
-                user_id = data["userId"]
-            except KeyError:
-                user_id = 0      #DEBUG
-                print "No `userId` given, assigning 0."
+                print("post /nodes")
+                ### POST Request Header ###
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                #self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
+                self.end_headers()
 
-            # Katjas code goes here
-            
-            if "init" in data.keys(): # initial call
-                # choose and note dataset for user
-                dataset_name = data["dataset"]
-                if user_id not in user_datas:
-                    user_datas[user_id] = UserData(user_id)
-                user_datas[user_id].dataset = dataset_name
+                # get body from request
+                content_len = int(self.headers['Content-Length'])
+                body = self.rfile.read(content_len)
 
-                # if dataset not yet initialized, catch up
-                if dataset_name not in initial_datas:
-                    initialize_dataset(dataset_name)
-                initial_data = initial_datas[dataset_name]
+                # convert body to list
+                data = json.loads(str(body).decode('utf-8'))  # python 2
+                # data = json.loads(str(body, encoding='utf-8'))      # python 3
                 
-                # set attributes for katja legacy and svm training
-                user_datas[user_id].graph_df = communication.make_graph_df(
-                                            image_ids=initial_data['image_id'],
-                                            projection=initial_data['projection'],
-                                            info_df=initial_data['info'],
-                                            coordinate_range=LIMITS)
+                # DEBUGging 'data'
+                # print "\033[32;1m", "DATA:", data, "\033[0m"
+                print "  -> data:", [(k, type(v)) for (k,v) in data.items()]
 
-                graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
-                user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
+                try:
+                    user_id = data["userId"]
+                except KeyError:
+                    user_id = 0      #DEBUG
+                    print "WARNING: No `userId` given, assigning 0."
+
+                # Katjas code goes here
                 
-                # delete old model
-                weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
-                if os.path.isfile(weightfile) and data['init'] == 'new':
-                    print("DEBUG!! removing old model")
-                    os.remove(weightfile)
-                else:
-                    print("DEBUG!! keeping old model")
+                if "init" in data.keys(): # initial call
+                    # choose and note dataset for user
+                    dataset_name = data["dataset"]
+                    if user_id not in user_datas:
+                        user_datas[user_id] = UserData(user_id)
+                    user_datas[user_id].dataset = dataset_name
 
-                self.wfile.write('{"done": true}')
-                return
-
-            else:                          # subsequent call
-                # finetuning... not working yet with dim 512, but 4096 needs new feature files
-                # load model
-                with torch.cuda.device(DEVICE):
-                    dataset_name = user_datas[user_id].dataset
+                    # if dataset not yet initialized, catch up
+                    if dataset_name not in initial_datas:
+                        initialize_dataset(dataset_name)
                     initial_data = initial_datas[dataset_name]
+                    
+                    # delete old model
+                    weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
+                    if os.path.isfile(weightfile) and data['init'] == 'new':
+                        print("DEBUG!! removing old model")
+                        os.remove(weightfile)
+                    else:
+                        print("DEBUG!! keeping old model")
+                    
+                    # set attributes for katja legacy and svm training
+                    if os.path.isfile(weightfile) and data['init'] == 'resume':
+                        proj = generate_projections(weightfile, initial_data['features_raw'])
+                        sendback = True
+                        print "DEBUG! Generated Projections"
+                    else:
+                        proj = initial_data['projection']
+                        sendback = False
+                        print "DEBUG! Projections not generated. isfile: {}, init: {}".format(os.path.isfile(weightfile), data['init'])
 
-                    weightfile = weightfile_path(user_id, dataset_name)
-
-                    if os.path.isfile(weightfile): # not first iteration
-                        model = mapnet(N_LAYERS, pretrained=False)
-                        best_weights = load_weights(weightfile, model.state_dict())
-                        model.load_state_dict(best_weights)
-                    else: # first iteration
-                        model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
-                    model.cuda()
-
-                    """# gen labels [OLD]
-                    lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
-                    lbl.sort(key=lambda x:x[0])
-                    idx, lbl = zip(*lbl)
-                    assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
-                    lbl = [x if x is not None else 0 for x in lbl]
-                    lbl = np.array(lbl, dtype=np.long)
-                    """
-                    # gen labels sorting via image_id
-                    lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
-                    id_feat  = zip(initial_data['image_id'], initial_data['features_raw'])
-                    ids, labels, features = zip(*[(name, lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
-                    unique, labels = np.unique(labels, return_inverse=True) # works only in python 2.7, since None < all
-                    labels   = np.array(labels) if None in unique else np.array(labels) + 1 # ensure empty label is 0
-                    features = np.array(features)
-                    del lbl_dict, id_feat, unique
-
-                    train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
-                
-                    # generate projection with new model
-                    model.eval()
-                    ds = torch.utils.data.TensorDataset(torch.tensor(features))
-                    dl = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False, num_workers=2)
-                    proj = []
-                    for item in dl:
-                        item = item[0].cuda()
-                        fts = model.mapping.forward(item)
-                        fts = fts / fts.norm(dim=1, keepdim=True)
-                        proj.append(model.embedder.forward(fts).cpu())
-                    proj = torch.cat(proj).detach().numpy()
-
-                    # reply with new projection
                     user_datas[user_id].graph_df = communication.make_graph_df(
-                                            image_ids=ids, projection=proj,
+                                            image_ids=initial_data['image_id'],
+                                            projection=proj,
                                             info_df=initial_data['info'],
                                             coordinate_range=LIMITS)
+
+
+
                     graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
                     user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
-                    self.wfile.write(graph_json)
+                
+                    # send projections on resume call
+                    if sendback:
+                        self.wfile.write(graph_json)
+                    else:
+                        self.wfile.write('{"done": true}')
                     return
-            """
-            else: # no 'init' in `data`
-                print("ERROR: No init given")
-                self.wfile.write("{'error': 'no init-flag given'}")
-                return
-            """
+
+                else:                          # subsequent call
+                    # finetuning... not working yet with dim 512, but 4096 needs new feature files
+                    # load model
+                    with torch.cuda.device(DEVICE):
+                        dataset_name = user_datas[user_id].dataset
+                        initial_data = initial_datas[dataset_name]
+
+                        weightfile = weightfile_path(user_id, dataset_name)
+
+                        if os.path.isfile(weightfile): # not first iteration
+                            model = load_model(weightfile)
+                        else: # first iteration
+                            model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
+                        model.cuda()
+
+                        """# gen labels [OLD]
+                        lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
+                        lbl.sort(key=lambda x:x[0])
+                        idx, lbl = zip(*lbl)
+                        assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
+                        lbl = [x if x is not None else 0 for x in lbl]
+                        lbl = np.array(lbl, dtype=np.long)
+                        """
+                        # gen labels sorting via image_id
+                        lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
+                        id_feat  = zip(initial_data['image_id'], initial_data['features_raw'])
+                        ids, labels, features = zip(*[(name, lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
+                        unique, labels = np.unique(labels, return_inverse=True) # works only in python 2.7, since None < all
+                        labels   = np.array(labels) if None in unique else np.array(labels) + 1 # ensure empty label is 0
+                        features = np.array(features)
+                        del lbl_dict, id_feat, unique
+
+                        train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
+                    
+                        # generate projection with new model
+                        proj = generate_projections(model, features)
+
+                        # reply with new projection
+                        user_datas[user_id].graph_df = communication.make_graph_df(
+                                                image_ids=ids, projection=proj,
+                                                info_df=initial_data['info'],
+                                                coordinate_range=LIMITS)
+                        graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
+                        user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
+
+                        self.wfile.write(graph_json)
+                        return
+                """
+                else: # no 'init' in `data`
+                    print("ERROR: No init given")
+                    self.wfile.write("{'error': 'no init-flag given'}")
+                    return
+                """
 
 
-            # shortcut for data access
-            # initial_data = initial_datas[user_datas[user_id].dataset]
+                # shortcut for data access
+                # initial_data = initial_datas[user_datas[user_id].dataset]
 
-            
+                
 
-            # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
-            self.wfile.write(graph_json)  #body zurueckschicken
+                # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
+                self.wfile.write(graph_json)  # body zurueckschicken
+            except Exception as e:
+                self.wfile.write(json.dumps({"error": {"msg": str(e),
+                                                       "type": str(type(e)),
+                                                       "loc": "/nodes"}
+                                            }))  # error body zurueckschicken
+                raise
         
         if self.path == "/getGroupNeighbours":
-            print("post /getGroupNeighbours")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
+            try:
+                print("post /getGroupNeighbours")
+                ### POST Request Header ###
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
 
-            # get body from request
-            content_len = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_len)
+                # get body from request
+                content_len = int(self.headers['Content-Length'])
+                body = self.rfile.read(content_len)
 
-            # convert body to list
-            data = json.loads(str(body).decode('utf-8'))  # python 2
-            # data = json.loads(str(body, encoding='utf-8'))      # python 3
-            
-            #DEBUG!
-            print "\033[32;1m", "DATA:", data, "\033[0m"
-            
-            # choose right dataset
-            user_id = data['userId']
-            dataset_name = user_datas[user_id].dataset
-            initial_data = initial_datas[dataset_name]
+                # convert body to list
+                data = json.loads(str(body).decode('utf-8'))  # python 2
+                # data = json.loads(str(body, encoding='utf-8'))      # python 3
+                
+                #DEBUG!
+                print "\033[32;1m", "DATA:", data, "\033[0m"
+                
+                # choose right dataset
+                user_id = data['userId']
+                dataset_name = user_datas[user_id].dataset
+                initial_data = initial_datas[dataset_name]
 
-            group_id = int(data['groupId'])
-            thresh = float(data['threshold'])
-            if 'negatives' not in data.keys():          # first iteration
-                # reset _svm_temp
-                user_datas[user_id]._svm_temp = {'positives': data['positives'],
-                                                 'negatives': set([]),              # allow no duplicates
-                                                 'svms': [] if user_datas[user_id]._svm_temp is None
-                                                          else user_datas[user_id]._svm_temp['svms']}
-                user_datas[user_id]._svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
+                group_id = int(data['groupId'])
+                thresh = float(data['threshold'])
+                if 'negatives' not in data.keys():          # first iteration
+                    # reset _svm_temp
+                    user_datas[user_id]._svm_temp = {'positives': data['positives'],
+                                                    'negatives': set([]),              # allow no duplicates
+                                                    'svms': [] if user_datas[user_id]._svm_temp is None
+                                                            else user_datas[user_id]._svm_temp['svms']}
+                    user_datas[user_id]._svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
 
-            else:
-                user_datas[user_id]._svm_temp['positives'] = data['positives']      # overwrite positives
-                user_datas[user_id]._svm_temp['negatives'].update(data['negatives'])
-                user_datas[user_id]._svm_temp['negatives'] = user_datas[user_id]._svm_temp['negatives'].difference(user_datas[user_id]._svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
+                else:
+                    user_datas[user_id]._svm_temp['positives'] = data['positives']      # overwrite positives
+                    user_datas[user_id]._svm_temp['negatives'].update(data['negatives'])
+                    user_datas[user_id]._svm_temp['negatives'] = user_datas[user_id]._svm_temp['negatives'].difference(user_datas[user_id]._svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
 
-            # only operate on data displayed in interface
-            displayed_ids = user_datas[user_id].index_to_id.values()
-            displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
-            vectors = initial_data['features'][displayed_idcs]
+                # only operate on data displayed in interface
+                displayed_ids = user_datas[user_id].index_to_id.values()
+                displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
+                vectors = initial_data['features'][displayed_idcs]
 
-            # map positive_idcs and negative_idcs to displayed_idcs indexing
-            positive_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['positives'])
-            positive_idcs = map(displayed_ids.index, positive_ids)
-            negative_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['negatives'])
-            negative_idcs = map(displayed_ids.index, negative_ids)
+                # map positive_idcs and negative_idcs to displayed_idcs indexing
+                positive_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['positives'])
+                positive_idcs = map(displayed_ids.index, positive_ids)
+                negative_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['negatives'])
+                negative_idcs = map(displayed_ids.index, negative_ids)
 
-            neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
-                                                                 max_rand_negatives=10,
-                                                                 k=-1, verbose=False)
+                neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
+                                                                    max_rand_negatives=10,
+                                                                    k=-1, verbose=False)
 
-            neighbor_ids = map(lambda x: displayed_ids[x], neighbor_idcs)                 # revert displayed_idcs indexing
-            id_to_index = dict(zip(user_datas[user_id].index_to_id.values(), user_datas[user_id].index_to_id.keys()))
-            neighbor_idcs = map(lambda x: id_to_index[x], neighbor_ids)
+                neighbor_ids = map(lambda x: displayed_ids[x], neighbor_idcs)                 # revert displayed_idcs indexing
+                id_to_index = dict(zip(user_datas[user_id].index_to_id.values(), user_datas[user_id].index_to_id.keys()))
+                neighbor_idcs = map(lambda x: id_to_index[x], neighbor_ids)
 
-            # save user labels
-            user_labeled_ids = positive_ids + negative_ids
-            labels, weights = user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
-            new_labels = [group_id] * len(positive_ids) + [-group_id] * len(negative_ids)
-            new_weights = np.ones(len(user_labeled_ids))
-            labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
-            user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
+                # save user labels
+                user_labeled_ids = positive_ids + negative_ids
+                labels, weights = user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
+                new_labels = [group_id] * len(positive_ids) + [-group_id] * len(negative_ids)
+                new_weights = np.ones(len(user_labeled_ids))
+                labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
+                user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
 
-            # save svm info for label prediction later
-            user_datas[user_id]._svm_temp['svms'][-1] = (svm, group_id, thresh)
+                # save svm info for label prediction later
+                user_datas[user_id]._svm_temp['svms'][-1] = (svm, group_id, thresh)
 
-            # make json
-            return_dict = {'group': user_datas[user_id]._svm_temp['positives'],
-                           'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
-            return_dict = json.dumps(return_dict).encode()
-            self.wfile.write(return_dict)  # body zurueckschicken
+                # make json
+                return_dict = {'group': user_datas[user_id]._svm_temp['positives'],
+                            'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
+                return_dict = json.dumps(return_dict).encode()
+                self.wfile.write(return_dict)  # body zurueckschicken
+            except Exception as e:
+                self.wfile.write(json.dumps({"error": {"msg": str(e),
+                                                       "type": str(type(e)),
+                                                       "loc": "/getGroupNeighbors"}
+                                            }))  # error body zurueckschicken
+                raise
 
         """
         if self.path == "/trainSvm":

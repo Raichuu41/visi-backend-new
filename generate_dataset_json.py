@@ -12,6 +12,7 @@ FEATURE_DIM = 512
 
 README = """\
 1. copy all images into <datasetroot>/raw/<SOMENAME>/imgs/
+   (please don't use multiple extentions [e.g. 'image.png.jpg'], this has not been tested due to time)
 2. give a+rx rights recursively (`chmod a+rx raw/<SOMENAME>`)
 3. run this script with a list (subset) of images or use all images in the folder [See EXAMPLES]
 4. punch julian to add the script in the node.js-server
@@ -26,14 +27,25 @@ EXAMPLES = """$ python generate_dataset_json.py -n Demo_Wiki_1 -i demo_wiki_1 -r
  $ python generate_dataset_json.py -n Demo_Wiki_3 -i demo_wiki_1 -r ~/visiexp/datasets -e bmp -a
  -> Generates a dataset called 'Demo_Wiki_3', using only bmp-files"""
 
+LABELFILE_EXAMPLE = """\
+CATEGORIES:         animal       pose     color
+some_wild_bear      bear         standing brown
+cat_25_06_2003      cat          sitting  white
+IMG_20190229_235901 wolpertinger flying   gray
+# first line defines categories ("CATEGORIES:" mandatory!)
+# use as many spaces as you please
+# non-mentioned images won't receive lables
+"""
+
 parser = ArgumentParser(description="Generates server-readable JSON files for new datasets")
 parser.add_argument("--root", "-r", type=str, default=DEFAULT_DATA_PATH, help="Root directory of all datasets.")
 parser.add_argument("--name", "-n", type=str, required=True, help="Name of the new dataset.")
-parser.add_argument("--idir", "-i", type=str, required=True, help="Name of image folder inside `<root>/raw/`.")
+parser.add_argument("--idir", "-i", type=str, required=True, help="Name of image folder inside `<ROOT>/raw/`.")
+parser.add_argument("--lfile", "-l", type=str, help="File that contains labels in categories.")
 parser.add_argument("--extentions", "-e", type=str, nargs="+", default=FILE_EXTENTIONS, help="Possible image extentions. Default: {}".format(FILE_EXTENTIONS))
 parser_input = parser.add_mutually_exclusive_group(required=True)
 parser_input.add_argument("--data", "-d", type=str, nargs="+", help="List of names of all data images to be processed. Preceding paths are ignored for easier auto-completion. Conflicts with `-f`, `-a`.")
-parser_input.add_argument("--file", "-f", type=str, nargs="?", help="File that contains the names of all data images to be processed. Conflicts with `-d`, `-a`.")
+parser_input.add_argument("--file", "-f", type=str, nargs="?", help="File that contains the names of all data images to be processed. Currently only method to add labels. Conflicts with `-d`, `-a`.")
 parser_input.add_argument("--all", "-a", action="store_true", help="Use all files in image folder. Conflicts with `-d`, `-f`.")
 parser.add_argument("--silent", "-s", action="store_true", help="Don't be verbose.")
 parser.add_argument("--device", "-x", type=int, default=0, help="CUDA device to use")
@@ -90,10 +102,35 @@ if __name__ == "__main__":
             fail = "; ".join([data[i] for i,b in enumerate(files) if b is None])
             raise IOError("The following data could not be found: {}".format(fail))
         data = clean_exts(data)
+        
+        # generate nodes-part for json
+        nodes = {name:{'labels': [], 'idx':i, 'x':0, 'y':0} for i, name in enumerate(data)}
+
+        # assign labels, if given
+        if args.lfile is not None:
+            if not args.silent: print "### Assigning Labels ###"
+            if not os.path.isfile(args.lfile):
+                raise IOError("The label file could not be found: {}".format(args.lfile))
+            labelfile = open(args.lfile, 'r')
+            first_line = labelfile.readline().split()
+            if first_line[0] != "CATEGORIES:"
+                raise IOError("The label file has wrong formatting.")
+            if not first_line[1:]:
+                raise IOError("The label file has no categories.")
+            categories = first_line[1:]
+            for i, line in enumerate(labelfile, 1):
+                line = line.split()
+                if len(line) != len(categories) + 1:
+                    raise IOError("The label file has the wrong amount of labels in line {}".format(i))
+                img, lables = line[0], line[1:]
+                if img not in nodes:
+                    raise IOError("Unknown image id in label file: {}".format(img))
+                nodes[img]['labels'] = lables
+
+        
 
         # generate temporary json to call Initializer
         if not args.silent: print "### Generating temporary JSON ###"
-        nodes = {name:{'label':'', 'idx':i, 'x':0, 'y':0} for i, name in enumerate(data)}
         out = {'im_dir_name': args.idir, 'nodes': nodes, 'temporary': True}
         json.dump(out, open(json_path, "w"))
 

@@ -127,32 +127,46 @@ if __name__ == "__main__":
                     raise IOError("Unknown image id in label file: {}".format(img))
                 nodes[img]['labels'] = lables
 
+        try:
+            # generate temporary json to call Initializer
+            if not args.silent: print "### Generating temporary JSON ###"
+            out = {'im_dir_name': args.idir, 'nodes': nodes, 'temporary': True}
+            json.dump(out, open(json_path, "w"))
+
+            # generate additional resources with Initializer
+            if not args.silent: print "### Loading Initializer ###"
+            dot_extentions = ["." + e for e in args.extentions] + [""]
+            init = Initializer(args.name, impath=imdir, info_file=json_path, outdir=args.root, feature_dim=512, data_extensions=dot_extentions, verbose=True)
+            init.initialize(raw_features=True)
+            proj = init.make_projection_dict()
+
+            # store real JSON with projections
+            if not args.silent: print "### Generating final JSON ###"
+            for i in range(len(proj['image_id'])):
+                for ext in dot_extentions:
+                    try:
+                        nodes[proj['image_id'][i] + ext]['x'] = proj['projection'][i][0]
+                        nodes[proj['image_id'][i] + ext]['y'] = proj['projection'][i][1]
+                    except KeyError:
+                        pass
+                    else: # break, if key worked
+                        break
+                else:
+                    raise IOError("No extention worked for {}".format(proj['image_id'][i])) # (this should not be happening)
+            out = {'im_dir_name': args.idir, 'nodes': nodes}
+        except:
+            if not args.silent: print "!#! An error occured, deleting temp files !#!"
+            if os.path.isfile(json_path):
+                os.remove(json_path)
+            path = os.path.join(args.root, "norm", "{}_mean_std.pkl")
+            if os.path.isfile(path):
+                os.remove(path)
+            path = os.path.join(args.root, "features", "{}_512.h5")
+            if os.path.isfile(path):
+                os.remove(path)
+            path = os.path.join(args.root, "features", "{}_512_PCA.h5")
+            if os.path.isfile(path):
+                os.remove(path)
+            raise
         
-
-        # generate temporary json to call Initializer
-        if not args.silent: print "### Generating temporary JSON ###"
-        out = {'im_dir_name': args.idir, 'nodes': nodes, 'temporary': True}
-        json.dump(out, open(json_path, "w"))
-
-        # generate additional resources with Initializer
-        if not args.silent: print "### Loading Initializer ###"
-        dot_extentions = ["." + e for e in args.extentions] + [""]
-        init = Initializer(args.name, impath=imdir, info_file=json_path, outdir=args.root, feature_dim=512, data_extensions=dot_extentions, verbose=True)
-        init.initialize(raw_features=True)
-        proj = init.make_projection_dict()
-
-        # store real JSON with projections
-        if not args.silent: print "### Generating final JSON ###"
-        for i in range(len(proj['image_id'])):
-            for ext in dot_extentions:
-                try:
-                    nodes[proj['image_id'][i] + ext]['x'] = proj['projection'][i][0]
-                    nodes[proj['image_id'][i] + ext]['y'] = proj['projection'][i][1]
-                except KeyError:
-                    pass
-                else: # break, if key worked
-                    break
-            else:
-                raise IOError("No extention worked for {}".format(proj['image_id'][i])) # (this should not be happening)
-        out = {'im_dir_name': args.idir, 'nodes': nodes}
         json.dump(out, open(json_path, "w"))

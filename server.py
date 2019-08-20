@@ -130,6 +130,7 @@ def load_model(weightfile):
     model = mapnet(N_LAYERS, pretrained=False)
     best_weights = load_weights(weightfile, model.state_dict())
     model.load_state_dict(best_weights)
+    return model
 
 def generate_labels_and_weights():
     """
@@ -328,11 +329,17 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     
                     # delete old model
                     weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
-                    if os.path.isfile(weightfile) and data['init'] == 'new':
-                        print("DEBUG!! removing old model")
-                        os.remove(weightfile)
+                    if data['init'] == 'new':
+                        if os.path.isfile(weightfile):
+                            print("DEBUG!! NEW: removing old model")
+                            os.remove(weightfile)
+                        else:
+                            print("DEBUG!! NEW: no old model to remove")
                     else:
-                        print("DEBUG!! keeping old model")
+                        if os.path.isfile(weightfile):
+                            print("DEBUG!! RESUME: keeping old model")
+                        else:
+                            print("DEBUG!! RESUME: no old model to keep")
                     
                     # set attributes for katja legacy and svm training
                     if os.path.isfile(weightfile) and data['init'] == 'resume':

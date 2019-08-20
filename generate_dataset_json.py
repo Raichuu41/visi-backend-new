@@ -104,7 +104,8 @@ if __name__ == "__main__":
         data = clean_exts(data)
         
         # generate nodes-part for json
-        nodes = {name:{'labels': [], 'idx':i, 'x':0, 'y':0} for i, name in enumerate(data)}
+        nodes = {name:{'label': '', 'labels': [], 'idx':i, 'x':0, 'y':0} for i, name in enumerate(data)}
+        #               ^-- this is needed by the Initializer (probably legacy)
 
         # assign labels, if given
         if args.lfile is not None:
@@ -113,7 +114,7 @@ if __name__ == "__main__":
                 raise IOError("The label file could not be found: {}".format(args.lfile))
             labelfile = open(args.lfile, 'r')
             first_line = labelfile.readline().split()
-            if first_line[0] != "CATEGORIES:"
+            if first_line[0] != "CATEGORIES:":
                 raise IOError("The label file has wrong formatting.")
             if not first_line[1:]:
                 raise IOError("The label file has no categories.")

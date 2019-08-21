@@ -66,7 +66,7 @@ def probe_image_file(name, idir):
 def clean_exts(inp_l):
     res = []
     for item in inp_l:
-        if any(item.endswith("." + ext) for ext in args.extentions):
+        if any(item.endswith("." + ext) for ext in args.extentions):z
             res.append(item.rsplit(".", 1)[0])
         else:
             res.append(item)
@@ -154,7 +154,7 @@ if __name__ == "__main__":
                         break
                 else:
                     raise IOError("No extention worked for {}".format(proj['image_id'][i])) # (this should not be happening)
-            out = {'im_dir_name': args.idir, 'nodes': nodes}
+            out = {'im_dir_name': args.idir, 'nodes': nodes, 'categories': categories}
         except:
             if not args.silent: print "!#! An error occured, deleting temp files !#!"
             if os.path.isfile(json_path):

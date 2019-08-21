@@ -127,6 +127,8 @@ if __name__ == "__main__":
                 if img not in nodes:
                     raise IOError("Unknown image id in label file: {}".format(img))
                 nodes[img]['labels'] = lables
+        else:
+            categories = None
 
         try:
             # generate temporary json to call Initializer
@@ -154,7 +156,9 @@ if __name__ == "__main__":
                         break
                 else:
                     raise IOError("No extention worked for {}".format(proj['image_id'][i])) # (this should not be happening)
-            out = {'im_dir_name': args.idir, 'nodes': nodes, 'categories': categories}
+            out = {'im_dir_name': args.idir, 'nodes': nodes} 
+            if categories is not None:
+                out['categories'] = categories
         except:
             if not args.silent: print "!#! An error occured, deleting temp files !#!"
             if os.path.isfile(json_path):

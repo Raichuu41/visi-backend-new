@@ -28,6 +28,7 @@ import python_code.train as train
 from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
 import pickle
+from IPython import embed
 
 N_LAYERS       = 0
 DATA_DIR       = sys.argv[1]
@@ -93,6 +94,7 @@ def initialize_dataset(dataset_name):
             info_df[col] = None
             info_df.loc[label_data['image_id'], col] = data
     """
+    # embed() #DEBUG!!
     print('Done [{}].'.format(dataset_name))
 
 def dataset_id_to_name(ds_id):
@@ -393,6 +395,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         lbl = np.array(lbl, dtype=np.long)
                         """
                         # gen labels sorting via image_id
+                        #TODO: time data preparation
                         lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
                         id_feat  = zip(initial_data['image_id'], initial_data['features_raw'])
                         ids, labels, features = zip(*[(name, lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
@@ -400,6 +403,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         labels   = np.array(labels) if None in unique else np.array(labels) + 1 # ensure empty label is 0
                         features = np.array(features)
                         del lbl_dict, id_feat, unique
+                        #TODO: end timing
 
                         train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
                     
@@ -465,6 +469,52 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 group_id = int(data['groupId'])
                 thresh = float(data['threshold'])
                 if 'negatives' not in data.keys():          # first iteration
+                    pass
+                else:
+                    pass
+
+                ### MAGIC GOES HERE ###
+
+                # make json
+                return_dict = {'group': user_datas[user_id]._svm_temp['positives'],
+                            'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
+                return_dict = json.dumps(return_dict).encode()
+                self.wfile.write(return_dict)  # body zurueckschicken
+            except Exception as e:
+                self.wfile.write(json.dumps({"error": {"msg": str(e),
+                                                       "type": str(type(e)),
+                                                       "loc": "/getGroupNeighbors"}
+                                            }))  # error body zurueckschicken
+                raise
+
+
+        if False and self.path == "/getGroupNeighbours":
+            try:
+                print("post /getGroupNeighbours")
+                ### POST Request Header ###
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+
+                # get body from request
+                content_len = int(self.headers['Content-Length'])
+                body = self.rfile.read(content_len)
+
+                # convert body to list
+                data = json.loads(str(body).decode('utf-8'))  # python 2
+                # data = json.loads(str(body, encoding='utf-8'))      # python 3
+                
+                #DEBUG!
+                print "\033[32;1m", "DATA:", data, "\033[0m"
+                
+                # choose right dataset
+                user_id = data['userId']
+                dataset_name = user_datas[user_id].dataset
+                initial_data = initial_datas[dataset_name]
+
+                group_id = int(data['groupId'])
+                thresh = float(data['threshold'])
+                if 'negatives' not in data.keys():          # first iteration
                     # reset _svm_temp
                     user_datas[user_id]._svm_temp = {'positives': data['positives'],
                                                     'negatives': set([]),              # allow no duplicates
@@ -479,6 +529,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                 # only operate on data displayed in interface
                 displayed_ids = user_datas[user_id].index_to_id.values()
+
                 displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
                 vectors = initial_data['features'][displayed_idcs]
 

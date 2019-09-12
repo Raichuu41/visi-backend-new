@@ -82,7 +82,7 @@ class Initializer(object):
         d = json.load(open(info_file, 'r'))
         # make ordered {image_id: label} dict
         d2 = OrderedDict((k, v['label']) for k,v in sorted(d['nodes'].iteritems(), key=lambda x: x[1]['idx']))
-        df = pd.DataFrame.from_dict(d2, orient='index')
+        df = pd.DataFrame.from_dict(d2, orient='index')#, columns=d2.keys())
         df.index.names = [u'image_id']
         # using DataFrame here to keep Katjas data handling
         return df

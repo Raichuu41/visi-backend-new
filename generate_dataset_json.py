@@ -66,7 +66,7 @@ def probe_image_file(name, idir):
 def clean_exts(inp_l):
     res = []
     for item in inp_l:
-        if any(item.endswith("." + ext) for ext in args.extentions):z
+        if any(item.endswith("." + ext) for ext in args.extentions):
             res.append(item.rsplit(".", 1)[0])
         else:
             res.append(item)

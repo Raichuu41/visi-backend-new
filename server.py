@@ -64,6 +64,10 @@ class UserData:
         print "[[ creating user {} ]]".format(user_id) #DEBUG!
         self.user_id = user_id
         self.dataset = None      # dataset the user is working on
+        self.svm_ids = []
+        self.svm_negs = set()
+
+        #LEGACY: remove asap
         self.index_to_id = None
         self._svm_temp = None
         self.graph_df = None
@@ -323,6 +327,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     if user_id not in user_datas:
                         user_datas[user_id] = UserData(user_id)
                     user_datas[user_id].dataset = dataset_name
+                    #user_datas[user_id].idx_to_id = dict([(k, v['name']) for k, v in data['nodes'].iteritems()])
+                    user_datas[user_id].svm_ids = np.array([v['index'] for v in data['nodes'].values()]) # store which keys are used, for the svm
 
                     # if dataset not yet initialized, catch up
                     if dataset_name not in initial_datas:
@@ -362,7 +368,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
 
                     graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
+
                     user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
+                    # embed() #DEBUG!!
                 
                     # send projections on resume call
                     if sendback:
@@ -463,104 +471,38 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 
                 # choose right dataset
                 user_id = data['userId']
-                dataset_name = user_datas[user_id].dataset
+                user_data = user_datas[user_id]
+                dataset_name = user_data.dataset
                 initial_data = initial_datas[dataset_name]
 
                 group_id = int(data['groupId'])
                 thresh = float(data['threshold'])
                 if 'negatives' not in data.keys():          # first iteration
-                    pass
+                    idx_pos = data['positives']
+                    idx_neg = None
+                    user_data.svm_negs = set()
                 else:
-                    pass
+                    idx_pos = data['positives']
+                    idx_neg = (set(data['negatives']) | user_data.svm_negs).difference(idx_pos)
+                    user_data.svm_negs = idx_neg
 
-                ### MAGIC GOES HERE ###
-
-                # make json
-                return_dict = {'group': user_datas[user_id]._svm_temp['positives'],
-                            'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
-                return_dict = json.dumps(return_dict).encode()
-                self.wfile.write(return_dict)  # body zurueckschicken
-            except Exception as e:
-                self.wfile.write(json.dumps({"error": {"msg": str(e),
-                                                       "type": str(type(e)),
-                                                       "loc": "/getGroupNeighbors"}
-                                            }))  # error body zurueckschicken
-                raise
-
-
-        if False and self.path == "/getGroupNeighbours":
-            try:
-                print("post /getGroupNeighbours")
-                ### POST Request Header ###
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-
-                # get body from request
-                content_len = int(self.headers['Content-Length'])
-                body = self.rfile.read(content_len)
-
-                # convert body to list
-                data = json.loads(str(body).decode('utf-8'))  # python 2
-                # data = json.loads(str(body, encoding='utf-8'))      # python 3
-                
-                #DEBUG!
-                print "\033[32;1m", "DATA:", data, "\033[0m"
-                
-                # choose right dataset
-                user_id = data['userId']
-                dataset_name = user_datas[user_id].dataset
-                initial_data = initial_datas[dataset_name]
-
-                group_id = int(data['groupId'])
-                thresh = float(data['threshold'])
-                if 'negatives' not in data.keys():          # first iteration
-                    # reset _svm_temp
-                    user_datas[user_id]._svm_temp = {'positives': data['positives'],
-                                                    'negatives': set([]),              # allow no duplicates
-                                                    'svms': [] if user_datas[user_id]._svm_temp is None
-                                                            else user_datas[user_id]._svm_temp['svms']}
-                    user_datas[user_id]._svm_temp['svms'].append(None)      # empty entry to save new svm and group_id to
-
-                else:
-                    user_datas[user_id]._svm_temp['positives'] = data['positives']      # overwrite positives
-                    user_datas[user_id]._svm_temp['negatives'].update(data['negatives'])
-                    user_datas[user_id]._svm_temp['negatives'] = user_datas[user_id]._svm_temp['negatives'].difference(user_datas[user_id]._svm_temp['positives'])      # in the unlikely case that a previous negative was somehow labeled as a positive by user
-
-                # only operate on data displayed in interface
-                displayed_ids = user_datas[user_id].index_to_id.values()
-
-                displayed_idcs = map(initial_data['image_id'].index, displayed_ids)             # convert displayed indices to indices of all samples
-                vectors = initial_data['features'][displayed_idcs]
-
-                # map positive_idcs and negative_idcs to displayed_idcs indexing
-                positive_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['positives'])
-                positive_idcs = map(displayed_ids.index, positive_ids)
-                negative_ids = map(lambda x: user_datas[user_id].index_to_id[x], user_datas[user_id]._svm_temp['negatives'])
-                negative_idcs = map(displayed_ids.index, negative_ids)
-
-                neighbor_idcs, scores, svm = svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs,
+                feat = initial_data['features'][user_data.svm_ids]
+                #convert idx_pos, idx_neg here
+                idx_pos_inner = np.in1d(user_data.svm_ids, idx_pos).nonzero()[0]
+                idx_neg_inner = np.in1d(user_data.svm_ids, idx_neg).nonzero()[0]
+                neighbor_idcs, scores, svm = svm_k_nearest_neighbors(feat, idx_pos_inner, idx_neg_inner,
                                                                     max_rand_negatives=10,
                                                                     k=-1, verbose=False)
-
-                neighbor_ids = map(lambda x: displayed_ids[x], neighbor_idcs)                 # revert displayed_idcs indexing
-                id_to_index = dict(zip(user_datas[user_id].index_to_id.values(), user_datas[user_id].index_to_id.keys()))
-                neighbor_idcs = map(lambda x: id_to_index[x], neighbor_ids)
-
-                # save user labels
-                user_labeled_ids = positive_ids + negative_ids
-                labels, weights = user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')].values.transpose()
-                new_labels = [group_id] * len(positive_ids) + [-group_id] * len(negative_ids)
-                new_weights = np.ones(len(user_labeled_ids))
-                labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
-                user_datas[user_id].graph_df.loc[user_labeled_ids, ('group', 'weight')] = zip(labels, weights)
-
-                # save svm info for label prediction later
-                user_datas[user_id]._svm_temp['svms'][-1] = (svm, group_id, thresh)
+                neighbor_idcs = user_data.svm_ids[neighbor_idcs]
+                
+                """ #DEBUG!
+                reversed_idcs = user_data.svm_ids[idx_pos_inner]
+                print "REVERSED IDX (debug):", reversed_idcs
+                """
 
                 # make json
-                return_dict = {'group': user_datas[user_id]._svm_temp['positives'],
-                            'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
+                return_dict = {'group': idx_pos,
+                               'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
                 return_dict = json.dumps(return_dict).encode()
                 self.wfile.write(return_dict)  # body zurueckschicken
             except Exception as e:
@@ -740,7 +682,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     # config
     HOST_NAME = ""
-    PORT_NUMBER = 8000
+    PORT_NUMBER = 8023
     print(SPLASH)
     try:
         http_server = HTTPServer((HOST_NAME, PORT_NUMBER), MyHTTPHandler)

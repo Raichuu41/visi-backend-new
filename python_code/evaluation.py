@@ -7,7 +7,7 @@ import deepdish as dd
 import os
 import torch
 import matplotlib.pyplot as plt
-import faiss
+# import faiss
 from functools import partial
 from collections import Counter
 from sklearn.metrics import precision_recall_curve, f1_score, auc, precision_score, recall_score, average_precision_score, normalized_mutual_info_score
@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from initialization import Initializer
 from model import MapNet, mapnet#_1, mapnet_2, mapnet_3, mapnet_4
-from aux import TexPlotter, TableWriter, load_weights
+# from aux import TexPlotter, TableWriter, load_weights
 from train import evaluate_model
 
 MACHINE_EPS = np.finfo(float).eps

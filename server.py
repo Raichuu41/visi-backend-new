@@ -14,8 +14,7 @@ import deepdish as dd
 import torchvision
 import functools
 import pandas as pd
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer       # python 2
-#from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
+from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
 import json
 #from compute_embedding_snack import compute_graph
 import time, threading
@@ -26,9 +25,9 @@ import python_code.communication as communication
 from python_code.label_generation import svm_k_nearest_neighbors
 import python_code.train as train
 from python_code.model import MapNet, mapnet
-from python_code.aux import scale_to_range, load_weights
+# from python_code.aux import scale_to_range, load_weights
 import pickle
-from IPython import embed
+# from IPython import embed
 
 N_LAYERS       = 0
 DATA_DIR       = sys.argv[1]
@@ -61,7 +60,7 @@ class UserData:
     stores data per user, which was previously handled globally
     """
     def __init__(self, user_id):
-        print "[[ creating user {} ]]".format(user_id) #DEBUG!
+        print(f"[[ creating user {user_id} ]]") #DEBUG!
         self.user_id = user_id
         self.dataset = None      # dataset the user is working on
         self.svm_ids = []
@@ -71,42 +70,26 @@ class UserData:
         self.index_to_id = None
         self._svm_temp = None
         self.graph_df = None
-    
+
     def __repr__(self):
-        return "<UserData({}) at {}>".format(self.user_id, id(self))
+        return f"<UserData({self.user_id}) at {id(self)}>"
 
 def initialize_dataset(dataset_name):
-    print('Initialize {}...'.format(dataset_name))
-    data_info_file = os.path.join(DATA_DIR, '{}.json'.format(dataset_name))
+    print(f'Initialize {dataset_name}...')
+    data_info_file = os.path.join(DATA_DIR, f'{dataset_name}.json')
     initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file,
                                    feature_dim=FEATURE_DIM, outdir=DATA_DIR)
     initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'), raw_features=True)
     initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
-    """
-    if label_file is not None:
-        label_data = dd.io.load(label_file)
-        if not np.all(label_data['image_id'] == initial_data['image_id']):
-            raise RuntimeError('IDs in label_file do not match IDs in data_dict.')
-        label_none = label_data['labels_none']
-        label_svm = label_data['labels_svm']
-        generated_svm = label_svm[(label_none == 'None') & (label_svm != 'None')]
-        label_area = label_data['labels_area']
-        generated_area = label_area[(label_none == 'None') & (label_area != 'None')]
-        # add labels to info_file
-        info_df = initial_data['info']
-        for col, data in zip(['labeled', 'generated_svm', 'generated_area'], [label_none, generated_svm, generated_area]):
-            info_df[col] = None
-            info_df.loc[label_data['image_id'], col] = data
-    """
     # embed() #DEBUG!!
-    print('Done [{}].'.format(dataset_name))
+    print(f'Done [{dataset_name}].')
 
 def dataset_id_to_name(ds_id):
     "not needed anymore"
     d = {'002': 'Wikiart_artist49_images',
          '003': 'AwA2_vectors_train',
          '004': 'AwA2_vectors_test',
-         '005': 'STL_label_train',     
+         '005': 'STL_label_train',
          '006': 'STL_label_test',
          '011': 'STL_label_test_random',
          '001': 'Wikiart_Elgammal_EQ_artist_test',
@@ -147,7 +130,7 @@ def generate_labels_and_weights():
     labels, weights = graph_df.loc[initial_data['image_id'], ('group', 'weight')].values.transpose()
     # predict the labels using the svms
     for i, (svm, labelname, threshold) in enumerate(_svm_temp['svms']):
-        print('{}/{}'.format(i+1, len(_svm_temp['svms'])))
+        print(f'{i+1}/{len(_svm_temp["svms"])}')
         scores = svm.predict_proba(initial_data['features'])[:, 1]      # positive class only
         group_ids = np.repeat(labelname, len(labels))
         labels, weights = communication.update_labels_and_weights(labels, weights, group_ids, scores,
@@ -205,15 +188,14 @@ def update_embedding_handler(socket_id):
 
     headers = {'content-type': 'application/json'}
     payload = {'nodes': nodes, 'socket_id': socket_id}
-    #print(payload)
     response = requests.post("http://localhost:3000/api/v1/updateEmbedding", data=json.dumps(payload), headers=headers)
     print(response)
 
 def weightfile_path(uid, d_name, make_dirs=True):
-    weightfile = "./user_models/{}/".format(uid)
+    weightfile = f"./user_models/{uid}/"
     if make_dirs and not os.path.isdir(weightfile):
         os.makedirs(weightfile)
-    return os.path.join(weightfile, '{}_model.pth.tar'.format(d_name))
+    return os.path.join(weightfile, f'{d_name}_model.pth.tar')
 
 class SetInterval:
     """
@@ -261,7 +243,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-type')
 
         self.end_headers()
-    
+
     def do_GET(self):
         # by julian
         if "/getNodes" in self.path:
@@ -275,16 +257,16 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             # get query from paths
             query = self.path.split('?')[1]
             # check for more than one param
-            if("&" in self.path): 
+            if "&" in self.path:
                 return self.wfile.write("ERROR: API /getNodes does not allow multi params")
             # get file name from query and add .json ending
-            fileName = query.split('=')[1] + '.json'
-            
+            fileName = f"{query.split('=')[1]}.json"
+
             file = os.path.join(DATA_DIR, fileName)
-            print('Request file: ' + file)
-            
-            with open(file, 'rb') as file: 
-                self.wfile.write(file.read()) # Read the file and send the contents 
+            print(f'Request file: {file}')
+
+            with open(file, 'rb') as file:
+                self.wfile.write(file.read()) # Read the file and send the contents
 
     def do_POST(self):
         """
@@ -308,19 +290,19 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # convert body to list
                 data = json.loads(str(body).decode('utf-8'))  # python 2
                 # data = json.loads(str(body, encoding='utf-8'))      # python 3
-                
+
                 # DEBUGging 'data'
                 # print "\033[32;1m", "DATA:", data, "\033[0m"
-                print "  -> data:", [(k, type(v)) for (k,v) in data.items()]
+                print("  -> data:", [(k, type(v)) for (k,v) in data.items()])
 
                 try:
                     user_id = data["userId"]
                 except KeyError:
                     user_id = 0      #DEBUG
-                    print "WARNING: No `userId` given, assigning 0."
+                    print("WARNING: No `userId` given, assigning 0.")
 
                 # Katjas code goes here
-                
+
                 if "init" in data.keys(): # initial call
                     # choose and note dataset for user
                     dataset_name = data["dataset"]
@@ -334,7 +316,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     if dataset_name not in initial_datas:
                         initialize_dataset(dataset_name)
                     initial_data = initial_datas[dataset_name]
-                    
+
                     # delete old model
                     weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
                     if data['init'] == 'new':
@@ -348,16 +330,17 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                             print("DEBUG!! RESUME: keeping old model")
                         else:
                             print("DEBUG!! RESUME: no old model to keep")
-                    
+
                     # set attributes for katja legacy and svm training
                     if os.path.isfile(weightfile) and data['init'] == 'resume':
                         proj = generate_projections(weightfile, initial_data['features_raw'])
                         sendback = True
-                        print "DEBUG! Generated Projections"
+                        print("DEBUG! Generated Projections")
                     else:
                         proj = initial_data['projection']
                         sendback = False
-                        print "DEBUG! Projections not generated. isfile: {}, init: {}".format(os.path.isfile(weightfile), data['init'])
+                        print(f"DEBUG! Projections not generated. isfile: {os.path.isfile(weightfile)}, "
+                              f"init: {data['init']}")
 
                     user_datas[user_id].graph_df = communication.make_graph_df(
                                             image_ids=initial_data['image_id'],
@@ -371,7 +354,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                     user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
                     # embed() #DEBUG!!
-                
+
                     # send projections on resume call
                     if sendback:
                         self.wfile.write(graph_json)
@@ -414,7 +397,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         #TODO: end timing
 
                         train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
-                    
+
                         # generate projection with new model
                         proj = generate_projections(model, features)
 
@@ -439,7 +422,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # shortcut for data access
                 # initial_data = initial_datas[user_datas[user_id].dataset]
 
-                
+
 
                 # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
                 self.wfile.write(graph_json)  # body zurueckschicken
@@ -449,7 +432,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                        "loc": "/nodes"}
                                             }))  # error body zurueckschicken
                 raise
-        
+
         if self.path == "/getGroupNeighbours":
             try:
                 print("post /getGroupNeighbours")
@@ -465,10 +448,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # convert body to list
                 data = json.loads(str(body).decode('utf-8'))  # python 2
                 # data = json.loads(str(body, encoding='utf-8'))      # python 3
-                
+
                 #DEBUG!
-                print "\033[32;1m", "DATA:", data, "\033[0m"
-                
+                print("\033[32;1m", "DATA:", data, "\033[0m")
+
                 # choose right dataset
                 user_id = data['userId']
                 user_data = user_datas[user_id]
@@ -494,7 +477,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                                     max_rand_negatives=10,
                                                                     k=-1, verbose=False)
                 neighbor_idcs = user_data.svm_ids[neighbor_idcs]
-                
+
                 """ #DEBUG!
                 reversed_idcs = user_data.svm_ids[idx_pos_inner]
                 print "REVERSED IDX (debug):", reversed_idcs

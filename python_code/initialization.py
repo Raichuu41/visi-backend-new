@@ -18,7 +18,7 @@ from model import load_featurenet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
 from dataset import load_ImageDataset, ImageDataset
 from helpers import get_imgid
 from dataset import compute_mean_std
-from aux import load_weights
+# from aux import load_weights
 from itertools import product
 
 
@@ -340,22 +340,22 @@ class Initializer(object):
         """
     @staticmethod
     def get_projection(features, projection_dim=2, verbose=False, random_state=123):
-        print "DEBUG!! feat:{}".format(features)
+        print("DEBUG!! feat:{}".format(features))
         projector = UMAP(n_neighbors=30, n_components=projection_dim, min_dist=0.1, random_state=random_state,
                          verbose=verbose)
         return projector.fit_transform(features)
-    
+
     def make_projection_dict(self, **get_projection_kwargs):
         if not os.path.isfile(self.feature_file):
             raise RuntimeError('Feature file not found. Please call "make_feature_file" before starting or use the'
                                '"get_projection" method.')
         data = dd.io.load(self.feature_file)
-        print "DEBUG!! data:{}".format(data)
+        print("DEBUG!! data:{}".format(data))
         projection = self.get_projection(data['features'], verbose=self.verbose, **get_projection_kwargs)
         return {'image_id': data['image_id'], 'projection': projection}
 
     def make_projection_file(self, **get_projection_kwargs):
-        outdict = self.make_projection_dict(**get_projection_kwargs)
+        out_dict = self.make_projection_dict(**get_projection_kwargs)
         dd.io.save(self.projection_file, out_dict)
 
         if self.verbose:
@@ -460,7 +460,7 @@ class Initializer(object):
     def initialize(self, dataset=True, features=True, projection=True, multi_features=False, raw_features=False,
                    is_test=False):
         if dataset:
-            print "DEBUG!! normfile:`{}`".format(self.normalization_file)
+            print("DEBUG!! normfile:`{}`".format(self.normalization_file))
             if not os.path.isfile(self.normalization_file):
                 if is_test:
                     normalization_file = self.normalization_file.replace('_test', '_train')

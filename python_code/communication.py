@@ -5,7 +5,7 @@ import warnings
 import requests
 
 
-from aux import scale_to_range
+# from aux import scale_to_range
 
 
 def make_graph_df(image_ids, projection, info_df=None, coordinate_range=(-1, 1)):
@@ -118,8 +118,9 @@ def update_labels_and_weights(old_labels, old_weights, new_labels, new_weights, 
                 return old_label, old_weight
         else:
             raise RuntimeError('Unknown label case. Have old_label={}, old_weight={}, new_label={}, new_weight={}.')
-    labels, weights = np.stack(map(lambda (ol, ow, nl, nw):
-                                   map_fn(old_label=ol, old_weight=ow, new_label=nl, new_weight=nw),
+    test_lambda = [old_labels, old_weights, new_labels, new_weights]
+    labels, weights = np.stack(map(lambda test_lambda:
+                                   map_fn(old_label=test_lambda[0], old_weight=test_lambda[1], new_label=test_lambda[2], new_weight=test_lambda[3]),
                                    zip(old_labels, old_weights, new_labels, new_weights)), axis=1)
     return labels, weights
 

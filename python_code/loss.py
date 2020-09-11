@@ -48,7 +48,7 @@ class TSNELoss(nn.Module):
         numerator = torch.pow(1 + dist_sq, -1)
 
         # compute denominator
-        idcs_upper = torch.triu(torch.ones(dist_sq.shape, dtype=torch.uint8), diagonal=1)       # use symmetry and discard diagonal entries
+        idcs_upper = torch.triu(torch.ones(dist_sq.shape, dtype=torch.uint8), diagonal=1) # use symmetry and discard diagonal entries
         denominator = 2.0 * torch.sum(numerator[idcs_upper])
 
         # compute probability and set Q_ii to zero
@@ -176,7 +176,7 @@ class CosineLoss(nn.Module):
     def __init__(self, average=False):
         super(TripletLoss, self).__init__()
         self.average = average
-    
+
     def forward(self, prediction, labels):
         if prediction.dim() == 2 and labels.dim() == 1 and prediction.shape[0] == labels.shape[0]:
             raise ValueError("CosineLoss: wrong dims for prediction and labels.")

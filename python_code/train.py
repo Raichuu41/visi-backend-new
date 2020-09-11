@@ -10,7 +10,7 @@ import warnings
 from functools import partial
 
 from helpers import IndexDataset, BalancedBatchSampler, PartiallyLabeledBatchSampler
-from aux import AverageMeter, TBPlotter, load_weights
+# from aux import AverageMeter, TBPlotter, load_weights
 from loss import TSNEWrapper, TSNEWrapperMapNet, TripletLossWrapper, TripletSelector, select_semihard, \
     L1RegWrapper, select_random, TripletLossWrapper_pretraining
 from model import MapNet, load_featurenet
@@ -249,7 +249,7 @@ def train_mapnet(model, features, labels, weights=None,
                  plot_fn=None):
     use_test = test_features is not None and test_labels is not None
     use_multi_features = features.ndim == 3      # multi features have shape FTS_VARIANTS X N_SAMPLES X FEATURE_DIM
-    multi_features = None if not use_multi_features else features.copy()  
+    multi_features = None if not use_multi_features else features.copy()
 
     def sample_features():
         features = multi_features.copy()
@@ -416,7 +416,7 @@ def train_mapnet_cosine(model, features, labels, weights=None,
                         max_epochs=float('inf'), plot_fn=None):
     use_test = test_features is not None and test_labels is not None
     use_multi_features = features.ndim == 3      # multi features have shape FTS_VARIANTS X N_SAMPLES X FEATURE_DIM
-    multi_features = None if not use_multi_features else features.copy()  
+    multi_features = None if not use_multi_features else features.copy()
 
     def sample_features():
         features = multi_features.copy()

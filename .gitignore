@@ -13,3 +13,4 @@ MapNetCode/runs
 icons/**
 python_code/.log
 python_code/*automated_runs
+/venv/

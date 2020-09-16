@@ -2,7 +2,6 @@ from libc cimport math
 cimport cython
 import numpy as np
 cimport numpy as np
-from libc.stdio cimport printf
 cdef extern from "numpy/npy_math.h":
     float NPY_INFINITY
 

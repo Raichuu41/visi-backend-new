@@ -10,7 +10,7 @@ import warnings
 from functools import partial
 
 from helpers import IndexDataset, BalancedBatchSampler, PartiallyLabeledBatchSampler
-# from aux import AverageMeter, TBPlotter, load_weights
+from aux import AverageMeter, TBPlotter, load_weights
 from loss import TSNEWrapper, TSNEWrapperMapNet, TripletLossWrapper, TripletSelector, select_semihard, \
     L1RegWrapper, select_random, TripletLossWrapper_pretraining
 from model import MapNet, load_featurenet

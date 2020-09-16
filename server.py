@@ -25,7 +25,7 @@ import python_code.communication as communication
 from python_code.label_generation import svm_k_nearest_neighbors
 import python_code.train as train
 from python_code.model import MapNet, mapnet
-# from python_code.aux import scale_to_range, load_weights
+from python_code.aux import scale_to_range, load_weights
 import pickle
 # from IPython import embed
 
@@ -664,7 +664,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     # config
-    HOST_NAME = ""
+    HOST_NAME = "localhost"
     PORT_NUMBER = 8023
     print(SPLASH)
     try:

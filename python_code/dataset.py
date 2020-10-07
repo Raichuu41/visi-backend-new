@@ -8,9 +8,9 @@ from torch.utils.data import DataLoader, Dataset
 import torchvision.transforms as transforms
 from collections import Counter
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
-
-from helpers import ImageDataset
+from .helpers import ImageDataset
 
 
 def compute_mean_std(dataset, filename=None, outdir='./dataset_info', verbose=False):
@@ -19,17 +19,17 @@ def compute_mean_std(dataset, filename=None, outdir='./dataset_info', verbose=Fa
 
     mean = []
     std = []
-    for i, img in enumerate(loader):
+    progress = tqdm(total=len(loader))
+    for img in loader:
         if isinstance(img, tuple):          # in case of dataset of shape (data, target)
             img = img[0]
-        if verbose:
-            print('{}/{}'.format(i+1, len(loader)))
         img = img.view(img.shape[0], 3, -1)
         m = [im.mean(dim=1) for im in img]
         s = [im.std(dim=1) for im in img]
         mean.append(torch.stack(m).mean(dim=0))
         std.append(torch.stack(s).mean(dim=0))
-
+        progress.update(1)
+    progress.close()
     mean = torch.stack(mean).mean(dim=0)
     std = torch.stack(std).mean(dim=0)
 
@@ -43,7 +43,7 @@ def compute_mean_std(dataset, filename=None, outdir='./dataset_info', verbose=Fa
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
 
-    with open(filename, 'w') as f:
+    with open(filename, 'wb') as f:
         pickle.dump({'mean': list(mean.numpy()), 'std': list(std.numpy())}, f)
 
     if verbose:

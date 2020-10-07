@@ -14,10 +14,10 @@ from umap import UMAP
 from copy import copy
 from collections import OrderedDict
 
-from model import load_featurenet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
-from dataset import load_ImageDataset, ImageDataset
-from helpers import get_imgid
-from dataset import compute_mean_std
+from .model import load_featurenet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
+from .dataset import load_ImageDataset, ImageDataset
+from .helpers import get_imgid
+from .dataset import compute_mean_std
 # from aux import load_weights
 from itertools import product
 
@@ -59,21 +59,6 @@ class Initializer(object):
         self.multi_feature_file = self.feature_file.replace('.h5', '_multi.h5')
         # self.projection_file = os.path.join(self.projection_dir, '{}.h5'.format(self.dataset_name))
         self.projection_file = None # look, where this makes problems
-
-    """
-    @staticmethod
-    def get_info(info_file):
-        if info_file is None or not os.path.isfile(info_file):
-            return None
-        try:
-            info = dd.io.load(info_file)['df']
-        except KeyError:
-            info = dd.io.load(info_file)
-
-        if 'image_id' in info.keys():
-            info = info.set_index('image_id')
-        return info
-    """
 
     @staticmethod
     def get_info(info_file):

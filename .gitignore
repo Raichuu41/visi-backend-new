@@ -14,3 +14,4 @@ icons/**
 python_code/.log
 python_code/*automated_runs
 /venv/
+src/config/db_secret.js

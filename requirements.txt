@@ -14,3 +14,6 @@ joblib
 h5py
 tensorboardX
 setuptools
+UMAP
+umap-learn
+faiss-cpu

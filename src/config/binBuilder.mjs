@@ -9,7 +9,7 @@ const loadJson = () => {
     const dirname = path.resolve();
     dataSet.forEach(function (dataset_element) {
         const dataSetName = dataset_element['name']
-        fs.readFile(path.join(dirname, `../../images/${dataSetName}.json`), async (error, data) => {
+        fs.readFile(path.join(dirname, `../../images/dataset_json/${dataSetName}.json`), async (error, data) => {
             if (error) {
                 console.log('Async Read : NOT successful');
                 console.log(error);

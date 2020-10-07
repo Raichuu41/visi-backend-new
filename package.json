@@ -2,6 +2,7 @@
   "name": "bachelor-node",
   "version": "1.0.1",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "cross-env NODE_ENV=development nodemon --exec babel-node -- ./src",
     "debug": "cross-env NODE_ENV=development babel-node %NODE_DEBUG_OPTION% -- ./src",
@@ -16,15 +17,19 @@
     "perf:supercluster": "babel-node %NODE_DEBUG_OPTION% -- ./test/supercluster.js"
   },
   "dependencies": {
+    "babel-eslint": "^10.1.0",
     "cli-progress": "^3.8.2",
     "cors": "^2.8.5",
     "express": "^4.16.4",
     "graceful-fs": "^4.2.4",
     "kdbush": "^1.0.1",
+    "md5": "^2.3.0",
     "morgan": "^1.9.1",
+    "mysql": "^2.18.1",
     "node-fetch": "^2.3.0",
     "sharp": "^0.26.1",
     "socket.io": "^2.2.0",
+    "stream-stream": "^1.2.6",
     "supercluster": "^4.1.1",
     "tayden-clusterfck": "^0.7.0"
   },

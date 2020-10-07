@@ -7,8 +7,8 @@ import faiss
 import warnings
 from copy import deepcopy
 
-from utils import _binary_search_perplexity
-from helpers import BalancedBatchSampler
+from .utils import _binary_search_perplexity
+from .helpers import BalancedBatchSampler
 
 
 MACHINE_EPSILON = np.finfo(np.double).eps

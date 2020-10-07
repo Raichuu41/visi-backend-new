@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from python_code.initialization import Initializer
 import torch
 
-DEFAULT_DATA_PATH = "../visiexp/datasets/"
+DEFAULT_DATA_PATH = "../images/"
 FILE_EXTENTIONS = ["jpg", "png"]
 FEATURE_DIM = 512
 
@@ -61,7 +61,7 @@ def probe_image_file(name, idir):
             tmp = os.path.join(idir, name + "." + ext)
             if os.path.isfile(tmp):
                 return name
-    return None 
+    return None
 
 def clean_exts(inp_l):
     res = []
@@ -75,18 +75,19 @@ def clean_exts(inp_l):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    with torch.cuda.device(args.device):
+    # with torch.cuda.device(args.device):
+    if True:
 
-        json_path = os.path.join(args.root, args.name + ".json")
+        json_path = os.path.join(f'{args.root}/init_json', args.name + ".json")
         if os.path.exists(json_path):
             raise IOError("JSON for `{}` already exists.".format(args.name))
 
-        imdir = os.path.join(args.root, "raw", args.idir, "imgs")
+        imdir = os.path.abspath(os.path.join(__file__, f'{args.root}{args.idir}'))
         if not os.path.isdir(imdir):
             raise IOError("The path `{}` does not exist or is not a directory.".format(imdir))
 
         # check input data
-        if not args.silent: print "### Checking Files ###"
+        if not args.silent: print("### Checking Files ###")
         if args.data is not None:
             data = [os.path.split(x)[1] for x in args.data]
         elif args.file is not None:
@@ -102,14 +103,14 @@ if __name__ == "__main__":
             fail = "; ".join([data[i] for i,b in enumerate(files) if b is None])
             raise IOError("The following data could not be found: {}".format(fail))
         data = clean_exts(data)
-        
+
         # generate nodes-part for json
         nodes = {name:{'label': '', 'labels': [], 'idx':i, 'x':0, 'y':0} for i, name in enumerate(data)}
         #               ^-- this is needed by the Initializer (probably legacy)
 
         # assign labels, if given
         if args.lfile is not None:
-            if not args.silent: print "### Assigning Labels ###"
+            if not args.silent: print("### Assigning Labels ###")
             if not os.path.isfile(args.lfile):
                 raise IOError("The label file could not be found: {}".format(args.lfile))
             labelfile = open(args.lfile, 'r')
@@ -132,19 +133,19 @@ if __name__ == "__main__":
 
         try:
             # generate temporary json to call Initializer
-            if not args.silent: print "### Generating temporary JSON ###"
+            if not args.silent: print("### Generating temporary JSON ###")
             out = {'im_dir_name': args.idir, 'nodes': nodes, 'temporary': True}
-            json.dump(out, open(json_path, "w"))
+            json.dump(out, open(os.path.abspath(os.path.join(__file__, f'{args.root}{args.name}.json')), "w"))
 
             # generate additional resources with Initializer
-            if not args.silent: print "### Loading Initializer ###"
+            if not args.silent: print("### Loading Initializer ###")
             dot_extentions = ["." + e for e in args.extentions] + [""]
             init = Initializer(args.name, impath=imdir, info_file=json_path, outdir=args.root, feature_dim=512, data_extensions=dot_extentions, verbose=True)
             init.initialize(raw_features=True)
             proj = init.make_projection_dict()
 
             # store real JSON with projections
-            if not args.silent: print "### Generating final JSON ###"
+            if not args.silent: print("### Generating final JSON ###")
             for i in range(len(proj['image_id'])):
                 for ext in dot_extentions:
                     try:
@@ -156,11 +157,11 @@ if __name__ == "__main__":
                         break
                 else:
                     raise IOError("No extention worked for {}".format(proj['image_id'][i])) # (this should not be happening)
-            out = {'im_dir_name': args.idir, 'nodes': nodes} 
+            out = {'im_dir_name': args.idir, 'nodes': nodes}
             if categories is not None:
                 out['categories'] = categories
         except:
-            if not args.silent: print "!#! An error occured, deleting temp files !#!"
+            if not args.silent: print("!#! An error occured, deleting temp files !#!")
             if os.path.isfile(json_path):
                 os.remove(json_path)
             path = os.path.join(args.root, "norm", "{}_mean_std.pkl")
@@ -173,5 +174,5 @@ if __name__ == "__main__":
             if os.path.isfile(path):
                 os.remove(path)
             raise
-        
+
         json.dump(out, open(json_path, "w"))

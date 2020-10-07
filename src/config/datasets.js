@@ -15,13 +15,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataSet = [
     {
-        id: '099',
-        name: '2582_sub_wikiarts_debug',
-        description: '...',
-        imgPath: path.join(__dirname, '../../images/2582_sub_wikiarts_debug'),
-        size: 4,
-    },
-    {
         id: '003',
         name: 'STL_debug',
         description: '----',

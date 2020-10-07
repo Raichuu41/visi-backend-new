@@ -81,9 +81,7 @@ class ImageDataset(Dataset):
         if self.image_ids is not None:
             image_selection = np.stack(map(lambda x: [x + ext for ext in self.extensions], self.image_ids)).flatten()
             all_files = all_files[np.isin(all_files, image_selection)]
-        mapfunc = lambda f: is_imfile(f, extensions=self.extensions)
-        is_valid = map(mapfunc, all_files)
-        return all_files[is_valid]
+        return [ff for ff in all_files if ff.endswith('.jpg') or ff.endswith('.png')]
 
     def __len__(self):
         return len(self.filenames)

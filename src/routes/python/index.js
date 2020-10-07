@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import Router from 'express';
 import fetch from 'node-fetch';
-import { compareAndClean } from '../../util/compareAndClean';
-import { pythonApi, mockDataLength } from '../../config/env';
-import buildLabels from '../../util/buildLabels';
-import {getRandomUnusedId} from "../../util/getRandomUnusedId";
+import { compareAndClean } from '../../util/compareAndClean.js';
+import buildLabels from '../../util/buildLabels.js';
+import { getRandomUnusedId } from '../../util/getRandomUnusedId.js';
+import { pythonApi } from '../../config/pythonApi.js';
 
 const router = Router();
 
@@ -19,10 +19,10 @@ router.post('/updateLabels', async (req, res, next) => {
         console.log('send updateLabels to python');
         try {
             const time = process.hrtime();
-            const data = await fetch(`http://${pythonApi}:8000/updateLabels`, {
+            await fetch(`${pythonApi}/updateLabels`, {
                 method: 'POST',
                 header: { 'Content-type': 'application/json' },
-                body: JSON.stringify({ nodes }),
+                body: JSON.stringify({ nodes, userId: req.body.userId }),
             }).then(response => response.json());
             const diff = process.hrtime(time);
             res.send();
@@ -38,21 +38,21 @@ router.post('/updateLabels', async (req, res, next) => {
 // This is right now just for the python backend to get data back to UI without request
 router.post('/updateEmbedding', async (req, res, next) => {
     console.log('POST /updateEmbedding');
-    // TODO the dev should get insight what body is transporting
     const { categories, nodes, socket_id } = req.body;
 
     if (!socket_id) return next(new Error('No socket connection'));
 
+    // todo @Katja: why is categories not always inside?
     const labels = categories ? buildLabels(categories, nodes) : undefined;
     const socket = req.app.io.sockets.sockets[socket_id];
     if (!socket) return next(new Error(`No socket with ID: ${socket_id} found`)); // TODO maybe deliver error to frontend
-    if (labels) socket.emit('updateLabels', labels);
+    if (labels) socket.emit('updateCategories', { labels });
+    // confirm is {stopped: true/false}for signaling if the user hast stopped
     socket.emit('updateEmbedding', { nodes }, (confirm) => {
         console.log(confirm);
         res.json(confirm);
     });
 });
-
 
 router.post('/startUpdateEmbedding', async (req, res, next) => {
     console.log('POST /startUpdateEmbedding');
@@ -66,7 +66,7 @@ router.post('/startUpdateEmbedding', async (req, res, next) => {
 
     try {
         const time = process.hrtime();
-        await fetch(`http://${pythonApi}:8000/startUpdateEmbedding`, {
+        await fetch(`${pythonApi}/startUpdateEmbedding`, {
             method: 'POST',
             header: { 'Content-type': 'application/json' },
             body: JSON.stringify(body),
@@ -82,6 +82,7 @@ router.post('/startUpdateEmbedding', async (req, res, next) => {
     }
 });
 
+// todo ist this necessary if the sopped state is already transmitted?
 router.post('/stopUpdateEmbedding', async (req, res, next) => {
     console.log('POST /stopUpdateEmbedding');
     const { body } = req;
@@ -91,10 +92,9 @@ router.post('/stopUpdateEmbedding', async (req, res, next) => {
     // console.log(app)
     if (!socketId) return next(new Error('No Socket ID delivered'));
 
-
     try {
         const time = process.hrtime();
-        const data = await fetch(`http://${pythonApi}:8000/stopUpdateEmbedding`, {
+        const data = await fetch(`${pythonApi}/stopUpdateEmbedding`, {
             method: 'POST',
             header: { 'Content-type': 'application/json' },
             body: JSON.stringify(body),
@@ -109,23 +109,23 @@ router.post('/stopUpdateEmbedding', async (req, res, next) => {
     }
 });
 
+// todo @Katja: the groupId should be also returned from python, otherwise the user can select a new active group while the request return
 router.post('/getGroupNeighbours', async (req, res, next) => {
     console.log('POST /getGroupNeighbours');
     console.log(req.body);
-    const { neighbours, removedNeighbours, threshold } = req.body;
+    const {
+        threshold, positives, groupId, userId, negatives,
+    } = req.body;
     const body = {
-        threshold,
-        positives: req.body.group,
-        groupId: req.body.groupId,
+        threshold, // TODO maybe the python code need this or can perform the sorting?
+        positives,
+        groupId,
+        userId,
     };
 
-    if (neighbours) {
-        Object.keys(neighbours).forEach(key => neighbours[key] < threshold && body.positives.push(+key));
-    }
-
-    if (removedNeighbours) {
-        body.negatives = [];
-        Object.keys(removedNeighbours).forEach(key => body.negatives.push(+key));
+    // no negatives => initial function call
+    if (negatives) {
+        body.negatives = negatives;
     }
     console.log({ body });
 
@@ -134,25 +134,39 @@ router.post('/getGroupNeighbours', async (req, res, next) => {
 
         const dumyNeighbours = {};
 
-        for (let n = 0; n < 5; n += 1) {
-            const id = getRandomUnusedId(mockDataLength, body.positives);
-            dumyNeighbours[id] = Math.random() >= 0.5 ? 0.1 : 0.3;
+        for (let n = 0; n < 8; n += 1) {
+            const id = getRandomUnusedId(500, body.positives);
+            dumyNeighbours[id] = Math.random();
         }
 
+        const newNeighbours = {};
+        Object.keys(dumyNeighbours)
+            .sort((a, b) => dumyNeighbours[b] - dumyNeighbours[a])
+            .slice(0, +threshold)
+            .forEach(e => (newNeighbours[e] = dumyNeighbours[e]));
         res.send({
             group: body.positives,
-            neighbours: dumyNeighbours,
+            neighbours: newNeighbours,
+            dumyNeighbours,
         });
     } else {
         try {
             const time = process.hrtime();
-            const data = await fetch(`http://${pythonApi}:8000/getGroupNeighbours`, {
+            const data = await fetch(`${pythonApi}/getGroupNeighbours`, {
                 method: 'POST',
                 header: { 'Content-type': 'application/json' },
                 body: JSON.stringify(body),
-            }).then(response => response.text());
+            }).then(response => response.json());
+            const { group, neighbours: allNeighbours } = data;
+            console.log({ group, allNeighbours });
+            const newNeighbours = {};
+            Object.keys(allNeighbours)
+                .sort((a, b) => allNeighbours[b] - allNeighbours[a])
+                .slice(0, +threshold)
+                .forEach(e => (newNeighbours[e] = allNeighbours[e]));
+
+            res.json({ group, neighbours: newNeighbours, allData: data });
             const diff = process.hrtime(time);
-            res.send(data);
             console.log(`getGroupNeighbours from python took ${diff[0] + diff[1] / 1e9} seconds`);
         } catch (err) {
             console.error('error - getGroupNeighbours python error');

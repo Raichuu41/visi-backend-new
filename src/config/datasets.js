@@ -1,45 +1,41 @@
 /*
-*   1. eine Übersicht über jedes Datenset
-*   2. eine Pfad zum Ort wo die Bilddateien liegen
-*   3. in dev kann hier noch der
-* */
+   {
+        id: String, unique id
+        name: String, Name that is shown to the user
+        description: String, also shown to the user
+        imgPath: String, absolute path to dicts
+        mockDataFile: String, path to mock file
+        count: Number, use only if want to reduce the dataset to the first n elements. Most time creating a new one is the bedder way
+    }
+ */
+import path from 'path';
+import {fileURLToPath} from 'url';
 
-const devDataSets = [
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dataSet = [
     {
-        id: '001',
-        name: 'test-1 - 2582_sub_wikiarts',
-        description: 'this contains X Nodes, Y datas, Z cliques, K ranks',
-        dirName: '2582_sub_wikiarts',
-        mockDataFile: '',
-        count: 50,
-
-    },
-    {
-        id: '002',
-        name: 'test-2',
-        description: 'this contains X Nodes, \n Y datas, Z cliques, \n K ranks',
-        pathToImgs: `${__dirname}/../../images/images_3000/`,
-        mockDataFile: '',
-        count: 100,
+        id: '099',
+        name: '2582_sub_wikiarts_debug',
+        description: '...',
+        imgPath: path.join(__dirname, '../../images/2582_sub_wikiarts_debug'),
+        size: 4,
     },
     {
         id: '003',
-        name: 'test-3',
-        description: 'this contains Xqwewqewqeqweqwewqeqwewqeqweqwewqe Nodes, Y datas, Z cliques, K ranks',
-        pathToImgs: `${__dirname}/../../images/2582_sub_wikiarts/`,
-        mockDataFile: '',
+        name: 'STL_debug',
+        description: '----',
+        imgPath: path.join(__dirname, '../../images/STL_debug'),
+        size: 1300,
     },
-
-];
-
-
-const prodDataSet = [
     {
-        name: 'Katjs datensatz',
-        description: 'this contains X Nodes, Y datas, Z cliques, K ranks',
-        pathToImgs: 'Kompletter pfad zu Bildern',
-    },
+        id: '004',
+        name: 'images_3000',
+        description: 'Images 3000 Dataset',
+        imgPath: path.join(__dirname, '../../images/images_3000'),
+        size: 11728,
+    }
 ];
 
-export const dataSet = process.env.NODE_ENV === 'production' ? prodDataSet : devDataSets;
+export default dataSet;
 

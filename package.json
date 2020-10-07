@@ -16,8 +16,10 @@
     "perf:supercluster": "babel-node %NODE_DEBUG_OPTION% -- ./test/supercluster.js"
   },
   "dependencies": {
+    "cli-progress": "^3.8.2",
     "cors": "^2.8.5",
     "express": "^4.16.4",
+    "graceful-fs": "^4.2.4",
     "kdbush": "^1.0.1",
     "morgan": "^1.9.1",
     "node-fetch": "^2.3.0",

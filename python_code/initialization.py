@@ -13,16 +13,16 @@ from sklearn.decomposition import PCA
 from umap import UMAP
 from copy import copy
 from collections import OrderedDict
-
+import hdfdict
 from .model import load_featurenet, mapnet_1, mapnet_2, mapnet_3, mapnet_4
 from .dataset import load_ImageDataset, ImageDataset
 from .helpers import get_imgid
 from .dataset import compute_mean_std
-# from aux import load_weights
+from .aux import load_weights
 from itertools import product
 
 
-thisdir = os.path.dirname(os.path.realpath(__file__))
+thisdir = os.path.dirname(os.path.abspath(__file__))
 
 
 class Initializer(object):
@@ -44,12 +44,10 @@ class Initializer(object):
 
         # self.data_dir = os.path.join(outdir, 'dataset_info')
         self.data_dir = outdir
-        self.feature_dir = os.path.join(outdir, 'features')
+        self.feature_dir = os.path.abspath(os.path.join(__file__, '../../images/features'))
         # self.projection_dir = os.path.join(outdir, 'initial_projections')
         self.projection_dir = None # look, where this makes problems
-
-        # self.normalization_file = os.path.join(self.data_dir, '{}_mean_std.pkl'.format(self.dataset_name))
-        self.normalization_path = os.path.join(outdir, 'norm')
+        self.normalization_path = os.path.join(self.feature_dir, 'norm')
         self.normalization_file = os.path.join(self.normalization_path, '{}_mean_std.pkl'.format(self.dataset_name))
         self.feature_file = os.path.join(self.feature_dir,
                                          '{}.h5'.format(self.dataset_name) if self.feature_dim is None else
@@ -88,7 +86,7 @@ class Initializer(object):
                 raise AttributeError('Normalization file not found. '
                                      'Set normalize=False or make normalization file first '
                                      'using "make_normalization_file".')
-            with open(self.normalization_file, 'r') as f:
+            with open(self.normalization_file, 'rb') as f:
                 data_dict = pickle.load(f)
                 mean = torch.FloatTensor(data_dict['mean'])
                 std = torch.FloatTensor(data_dict['std'])
@@ -185,7 +183,7 @@ class Initializer(object):
         if not os.path.isdir(self.feature_dir):
             os.makedirs(self.feature_dir)
 
-        img_id = map(lambda x: x.split('.')[0], self._dataset.filenames)
+        img_id = list(map(lambda x: x.split('.')[0], self._dataset.filenames))
 
         out_dict = {'image_id': img_id, 'features': features, 'precomputed_pca': not save_pca}
         dd.io.save(self.feature_file, out_dict)
@@ -210,18 +208,18 @@ class Initializer(object):
         if not os.path.isdir(self.feature_dir):
             os.makedirs(self.feature_dir)
 
-        img_id = map(lambda x: x.split('.')[0], self._dataset.filenames)
+        img_id = list(map(lambda x: x.split('.')[0], self._dataset.filenames))
 
         out_dict = {'raw': {'image_id': img_id, 'features': features}}
-
         if os.path.isfile(self.feature_file):
             data_dict = dd.io.load(self.feature_file)
             data_dict.update(out_dict)
+            # hdfdict.dump(data_dict, self.feature_file)
             dd.io.save(self.feature_file, data_dict)
             if self.verbose:
                 print('Appended features to {}'.format(self.feature_file))
         else:
-            dd.io.save(self.feature_file, out_dict)
+            hdfdict.dump(out_dict, self.feature_file)
             if self.verbose:
                 print('Saved features to {}'.format(self.feature_file))
 
@@ -309,20 +307,6 @@ class Initializer(object):
             if len(self.info) != len(image_id):
                 raise RuntimeWarning('Image IDs in info file and feature file do not match.')
 
-        """ # should not be needed with projections in new JSON-Files
-        if os.path.isfile(self.projection_file):
-            p_data = dd.io.load(self.projection_file)
-            if not np.all(image_id == p_data['image_id']):
-                if sorted(image_id) == sorted(p_data['image_id']):
-                    raise RuntimeWarning('Order in feature file does not match order in projection file.'
-                                         'Re-order projection file.')
-                    mapped_idcs = map(lambda x: np.where(image_id == x)[0][0], p_data['image_id'])
-                    p_data['projection'] = p_data['projection'][np.argsort(mapped_idcs)]
-                    p_data['image_id'] = image_id
-                    dd.io.save(self.projection_file, p_data)
-                else:
-                    raise RuntimeWarning('Projection file does not match feature file.')
-        """
     @staticmethod
     def get_projection(features, projection_dim=2, verbose=False, random_state=123):
         print("DEBUG!! feat:{}".format(features))
@@ -345,35 +329,6 @@ class Initializer(object):
 
         if self.verbose:
             print('Saved projection to {}'.format(self.projection_file))
-
-    """
-    def set_projection_file(self, projection_file):
-        if not os.path.isfile(projection_file):
-            raise IOError('Projection file not found.')
-        self.projection_file = projection_file
-        data = dd.io.load(projection_file)
-        image_id = data['image_id']
-
-        if self.info is not None:
-            if not np.all(np.isin(image_id, self.info.index.values)):
-                raise RuntimeWarning('Info file not up to date - '
-                                     'Some entries in projection file are missing in info file.')
-            if len(self.info) != len(image_id):
-                raise RuntimeWarning('Image IDs in info file and projection file do not match.')
-
-        if os.path.isfile(self.feature_file):
-            f_data = dd.io.load(self.feature_file)
-            if not np.all(image_id == f_data['image_id']):
-                if sorted(image_id) == sorted(f_data['image_id']):
-                    raise RuntimeWarning('Order in projection file does not match order in feature file.'
-                                         'Re-order feature file.')
-                    mapped_idcs = map(lambda x: np.where(image_id == x)[0][0], f_data['image_id'])
-                    f_data['features'] = f_data['features'][np.argsort(mapped_idcs)]
-                    f_data['image_id'] = image_id
-                    dd.io.save(self.feature_file, f_data)
-                else:
-                    raise RuntimeWarning('Feature file does not match projection file.')
-    """
 
     def get_data_dict(self, normalize_features=True):
         data_dict = dict.fromkeys(['image_id', 'features', 'projection', 'info'])
@@ -487,7 +442,8 @@ class Initializer(object):
                     self.make_multi_feature_file(batchsize=16)
 
         if raw_features:
-            exists = os.path.isfile(self.feature_file)
+            test = os.path.abspath(os.path.join(__file__, self.feature_file))
+            exists = os.path.isfile(test)
             if exists:
                 data_dict = dd.io.load(self.feature_file)
                 exists = 'raw' in data_dict.keys()

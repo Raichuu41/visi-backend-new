@@ -5,10 +5,11 @@ import json
 from argparse import ArgumentParser
 from python_code.initialization import Initializer
 import torch
+import numpy as np
 
-DEFAULT_DATA_PATH = "../images/"
+DEFAULT_DATA_PATH = "../../images/"
 FILE_EXTENTIONS = ["jpg", "png"]
-FEATURE_DIM = 512
+FEATURE_DIM = 4096
 
 README = """\
 1. copy all images into <datasetroot>/raw/<SOMENAME>/imgs/
@@ -50,6 +51,14 @@ parser_input.add_argument("--all", "-a", action="store_true", help="Use all file
 parser.add_argument("--silent", "-s", action="store_true", help="Don't be verbose.")
 parser.add_argument("--device", "-x", type=int, default=0, help="CUDA device to use")
 
+def default(obj):
+    if type(obj).__module__ == np.__name__:
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return obj.item()
+    raise TypeError('Unknown type:', type(obj))
+
 def probe_image_file(name, idir):
     if any(name.endswith("." + ext) for ext in args.extentions):
         # if extention is given, only test given extention
@@ -77,8 +86,7 @@ if __name__ == "__main__":
 
     # with torch.cuda.device(args.device):
     if True:
-
-        json_path = os.path.join(f'{args.root}/init_json', args.name + ".json")
+        json_path = os.path.abspath(os.path.join(__file__, DEFAULT_DATA_PATH, 'init_json', f'{args.name}.json'))
         if os.path.exists(json_path):
             raise IOError("JSON for `{}` already exists.".format(args.name))
 
@@ -140,7 +148,8 @@ if __name__ == "__main__":
             # generate additional resources with Initializer
             if not args.silent: print("### Loading Initializer ###")
             dot_extentions = ["." + e for e in args.extentions] + [""]
-            init = Initializer(args.name, impath=imdir, info_file=json_path, outdir=args.root, feature_dim=512, data_extensions=dot_extentions, verbose=True)
+            init = Initializer(args.name, impath=imdir, info_file=json_path, outdir=args.root, feature_dim=FEATURE_DIM,
+                               data_extensions=dot_extentions, verbose=True)
             init.initialize(raw_features=True)
             proj = init.make_projection_dict()
 
@@ -175,4 +184,4 @@ if __name__ == "__main__":
                 os.remove(path)
             raise
 
-        json.dump(out, open(json_path, "w"))
+        json.dump(out, open(json_path, "w"), default=default, indent=4)

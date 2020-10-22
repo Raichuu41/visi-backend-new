@@ -27,6 +27,13 @@ const dataSet = [
         description: 'Images 3000 Dataset',
         imgPath: path.join(__dirname, '../../images/images_3000'),
         size: 11728,
+    },
+    {
+        id: '005',
+        name: 'test_data',
+        description: 'Some test data for testing',
+        imgPath: path.join(__dirname, '../../images/test_data'),
+        size: 120
     }
 ];
 

@@ -4,12 +4,14 @@ import imgSizes from './imgSizes.js';
 import sharp from 'sharp';
 import cliProgress from 'cli-progress';
 import dataSet from './datasets.js';
+import {fileURLToPath} from 'url';
 
 const loadJson = () => {
-    const dirname = path.resolve();
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
     dataSet.forEach(function (dataset_element) {
         const dataSetName = dataset_element['name']
-        fs.readFile(path.join(dirname, `../../images/dataset_json/${dataSetName}.json`), async (error, data) => {
+        fs.readFile(path.join(__dirname, `../../images/dataset_json/${dataSetName}.json`), async (error, data) => {
             if (error) {
                 console.log('Async Read : NOT successful');
                 console.log(error);
@@ -21,10 +23,10 @@ const loadJson = () => {
                     await Promise.all(dataJson.map(async (sourceFile, idx) => {
                         let writeStream;
                         // if (writeStream) writeStream.end();
-                        const binFilePath = path.join(dirname,
+                        const binFilePath = path.join(__dirname,
                             `../../images/bin/${dataSetName}#${idx}.bin`);
                         writeStream = fs.createWriteStream(binFilePath);
-                        const imageFilePath = fs.realpathSync(path.join(dirname,
+                        const imageFilePath = fs.realpathSync(path.join(__dirname,
                             `../../images/${dataSetName}/${sourceFile}`));
                         const pics = Object.create(null);
                         await Promise.all(imgSizes.map(async (size) => {

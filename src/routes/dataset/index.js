@@ -27,7 +27,7 @@ router.get('/all', async (req, res) => {
     return res.json(datasets);
 });
 
-// GET - /api/v1/dataset/images/:id
+// GET - /api/v1/dataset/images/:id/:count
 router.get('/images/:id/:count', async (req, res, next) => {
     try {
         console.log('request dataset stream');

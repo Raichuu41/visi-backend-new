@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import os
 import json
 from argparse import ArgumentParser
@@ -104,7 +103,7 @@ if __name__ == "__main__":
             data = os.listdir(imdir)
         else:
             assert False, "This should not be happening!"
-
+        data = sorted(data)
         # error, if files missing
         files = [probe_image_file(f, imdir) for f in data]
         if None in files:
@@ -183,5 +182,7 @@ if __name__ == "__main__":
             if os.path.isfile(path):
                 os.remove(path)
             raise
-
+        # sort the node keys to be equal to the sorted image list
+        out['nodes'] = sorted(out['nodes'].items())
+        out['nodes'] = {x[0]: x[1] for x in out['nodes']}
         json.dump(out, open(json_path, "w"), default=default, indent=4)

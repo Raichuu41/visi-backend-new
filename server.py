@@ -288,8 +288,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 body = self.rfile.read(content_len)
 
                 # convert body to list
-                data = json.loads(str(body).decode('utf-8'))  # python 2
-                # data = json.loads(str(body, encoding='utf-8'))      # python 3
+                # data = json.loads(str(body).decode('utf-8'))  # python 2
+                data = json.loads(str(body, encoding='utf-8'))      # python 3
 
                 # DEBUGging 'data'
                 # print "\033[32;1m", "DATA:", data, "\033[0m"
@@ -446,8 +446,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 body = self.rfile.read(content_len)
 
                 # convert body to list
-                data = json.loads(str(body).decode('utf-8'))  # python 2
-                # data = json.loads(str(body, encoding='utf-8'))      # python 3
+                # data = json.loads(str(body).decode('utf-8'))  # python 2
+                data = json.loads(str(body, encoding='utf-8'))      # python 3
 
                 #DEBUG!
                 print("\033[32;1m", "DATA:", data, "\033[0m")

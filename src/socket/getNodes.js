@@ -49,7 +49,7 @@ export default socket => async (data) => {
         //     const length = Object.keys(all.nodes).length;
         //     console.log(d.name, length);
         // }));
-        const jsonAll = await fetch(`http://${pythonApi}/getNodes?dataset=${dataset.name}`)
+        const jsonAll = await fetch(`${pythonApi}/getNodes?dataset=${dataset.name}`)
             .then(res => res.json());
         /*
         const dirname = path.resolve();

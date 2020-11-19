@@ -14,7 +14,6 @@ import {fileURLToPath} from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataSet = [
-    /*
     {
         id: '003',
         name: 'STL_debug',
@@ -36,7 +35,6 @@ const dataSet = [
         imgPath: path.join(__dirname, '../../images/test_data'),
         size: 65
     },
-    */
     {
         id: '006',
         name: 'test_30',

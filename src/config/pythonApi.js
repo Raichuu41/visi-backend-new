@@ -1,1 +1,1 @@
-export const pythonApi = 'localhost:8023';
+export const pythonApi = 'http://localhost:8023';

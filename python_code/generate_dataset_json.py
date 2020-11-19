@@ -8,7 +8,7 @@ import numpy as np
 
 DEFAULT_DATA_PATH = "../../images/"
 FILE_EXTENTIONS = ["jpg", "png"]
-FEATURE_DIM = 4096
+FEATURE_DIM = 512
 
 README = """\
 1. copy all images into <datasetroot>/raw/<SOMENAME>/imgs/

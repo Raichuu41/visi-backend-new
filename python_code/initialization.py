@@ -20,6 +20,7 @@ from .helpers import get_imgid
 from .dataset import compute_mean_std
 from .aux import load_weights
 from itertools import product
+from tqdm import tqdm
 
 
 thisdir = os.path.dirname(os.path.abspath(__file__))
@@ -64,7 +65,7 @@ class Initializer(object):
             return None
         d = json.load(open(info_file, 'r'))
         # make ordered {image_id: label} dict
-        d2 = OrderedDict((k, v['label']) for k,v in sorted(d['nodes'].iteritems(), key=lambda x: x[1]['idx']))
+        d2 = OrderedDict((k, v['label']) for k,v in sorted(d['nodes'].items(), key=lambda x: x[1]['idx']))
         df = pd.DataFrame.from_dict(d2, orient='index')#, columns=d2.keys())
         df.index.names = [u'image_id']
         # using DataFrame here to keep Katjas data handling
@@ -150,13 +151,13 @@ class Initializer(object):
         dataloader = DataLoader(dataset, batchsize, shuffle=False, drop_last=False, **loader_kwargs)
 
         features = []
-        for i, data in enumerate(dataloader):
-            if verbose:
-                print('{}/{}'.format(i + 1, len(dataloader)))
+        progress = tqdm(total=len(dataloader))
+        for data in dataloader:
             input = data.cuda() if use_gpu else data
             output = model(input)
             features.append(output.data.cpu())
-
+            progress.update(1)
+        progress.close()
         features = torch.cat(features)
         return features.numpy()
 

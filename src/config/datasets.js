@@ -28,6 +28,7 @@ const dataSet = [
         imgPath: path.join(__dirname, '../../images/images_3000'),
         size: 11728,
     },
+    /*
     {
         id: '005',
         name: 'test_data',
@@ -42,6 +43,7 @@ const dataSet = [
         imgPath: path.join(__dirname, '../../images/test_30'),
         size: 36
     }
+    */
 ];
 
 export default dataSet;

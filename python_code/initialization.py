@@ -190,7 +190,7 @@ class Initializer(object):
         dd.io.save(self.feature_file, out_dict)
 
         if save_pca:
-            with open(self.feature_file.replace('.h5', '_PCA.pkl'), 'w') as f:
+            with open(self.feature_file.replace('.h5', '_PCA.pkl'), 'wb') as f:
                 pickle.dump(pca, f)
 
         if self.verbose:

@@ -5,10 +5,10 @@ from argparse import ArgumentParser
 from python_code.initialization import Initializer
 import torch
 import numpy as np
+from server import FEATURE_DIM
 
 DEFAULT_DATA_PATH = "../../images/"
 FILE_EXTENTIONS = ["jpg", "png"]
-FEATURE_DIM = 512
 
 README = """\
 1. copy all images into <datasetroot>/raw/<SOMENAME>/imgs/

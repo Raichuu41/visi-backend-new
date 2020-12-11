@@ -5,7 +5,7 @@ import warnings
 import requests
 
 
-# from aux import scale_to_range
+from .aux import scale_to_range
 
 
 def make_graph_df(image_ids, projection, info_df=None, coordinate_range=(-1, 1)):
@@ -16,7 +16,8 @@ def make_graph_df(image_ids, projection, info_df=None, coordinate_range=(-1, 1))
     df['group'] = None
     df['weight'] = None
     if info_df is not None:
-        df = pd.concat([df, info_df], axis=1, join_axes=[df.index])     # add available information to images with existing coordinates
+        df = pd.concat([df, info_df], axis=1).reindex(df.columns)
+        # df = pd.concat([df, info_df], axis=1, join_axes=[df.index])     # add available information to images with existing coordinates
     return df
 
 
@@ -43,7 +44,7 @@ def graph_df_to_json(graph_df, max_elements=None, display_indices=None, random_s
     def merge_label_columns(rows):
         return([None if pd.isnull(v) else v for v in rows])
 
-    labels = map(merge_label_columns, label_values)
+    labels = [*map(merge_label_columns, label_values)]
 
     data = np.stack([range(len(graph_df)), graph_df.index.values, graph_df['x'].values, graph_df['y'].values], axis=1)
     converted_df = pd.DataFrame(columns=['index', 'name', 'x', 'y'],

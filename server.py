@@ -14,9 +14,9 @@ import deepdish as dd
 import torchvision
 import functools
 import pandas as pd
-from http.server import BaseHTTPRequestHandler, HTTPServer        # python 3
+from http.server import BaseHTTPRequestHandler, HTTPServer  # python 3
 import json
-#from compute_embedding_snack import compute_graph
+# from compute_embedding_snack import compute_graph
 import time, threading
 import requests
 from random import uniform
@@ -27,17 +27,18 @@ import python_code.train as train
 from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
 import pickle
+
 # from IPython import embed
 
-N_LAYERS       = 0
-DATA_DIR       = sys.argv[1]
-IMPATH         = None       # should not be needed, since all features should be precomputed
-FEATURE_DIM    = 512
+N_LAYERS = 0
+DATA_DIR = sys.argv[1]
+IMPATH = None  # should not be needed, since all features should be precomputed
+FEATURE_DIM = 512
 PROJECTION_DIM = 2
-LIMITS         = (-15, 15)
-MAX_DISPLAY    = None       # show at most MAX_DISPLAY images in interface (None == don't cut anything)
-START_TIME     = time.time()
-DEVICE         = 2
+LIMITS = (-15, 15)
+MAX_DISPLAY = None  # show at most MAX_DISPLAY images in interface (None == don't cut anything)
+START_TIME = time.time()
+DEVICE = 2
 
 SPLASH = """
 +-------------------------------------------+
@@ -52,6 +53,7 @@ SPLASH = """
 initial_datas = {}
 user_datas = {}
 
+
 # initialize global dataset information (image ids, features, embedding) and network
 # label_file = None
 
@@ -59,20 +61,22 @@ class UserData:
     """
     stores data per user, which was previously handled globally
     """
+
     def __init__(self, user_id):
-        print(f"[[ creating user {user_id} ]]") #DEBUG!
+        print(f"[[ creating user {user_id} ]]")  # DEBUG!
         self.user_id = user_id
-        self.dataset = None      # dataset the user is working on
+        self.dataset = None  # dataset the user is working on
         self.svm_ids = []
         self.svm_negs = set()
 
-        #LEGACY: remove asap
+        # LEGACY: remove asap
         self.index_to_id = None
         self._svm_temp = None
         self.graph_df = None
 
     def __repr__(self):
         return f"<UserData({self.user_id}) at {id(self)}>"
+
 
 def initialize_dataset(dataset_name):
     print(f'Initialize {dataset_name}...')
@@ -83,6 +87,7 @@ def initialize_dataset(dataset_name):
     initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
     # embed() #DEBUG!!
     print(f'Done [{dataset_name}].')
+
 
 def dataset_id_to_name(ds_id):
     "not needed anymore"
@@ -96,9 +101,10 @@ def dataset_id_to_name(ds_id):
          '008': 'Wikiart_Elgammal_EQ_artist_train',
          '009': 'Wikiart_Elgammal_EQ_genre_train',
          '010': 'Wikiart_Elgammal_EQ_genre_test'
-        }
+         }
 
     return d[ds_id]
+
 
 def generate_projections(model, features):
     if type(model) is str:
@@ -115,11 +121,13 @@ def generate_projections(model, features):
         proj.append(model.embedder.forward(fts).cpu())
     return torch.cat(proj).detach().numpy()
 
+
 def load_model(weightfile):
     model = mapnet(N_LAYERS, pretrained=False)
     best_weights = load_weights(weightfile, model.state_dict())
     model.load_state_dict(best_weights)
     return model
+
 
 def generate_labels_and_weights():
     """
@@ -130,8 +138,8 @@ def generate_labels_and_weights():
     labels, weights = graph_df.loc[initial_data['image_id'], ('group', 'weight')].values.transpose()
     # predict the labels using the svms
     for i, (svm, labelname, threshold) in enumerate(_svm_temp['svms']):
-        print(f'{i+1}/{len(_svm_temp["svms"])}')
-        scores = svm.predict_proba(initial_data['features'])[:, 1]      # positive class only
+        print(f'{i + 1}/{len(_svm_temp["svms"])}')
+        scores = svm.predict_proba(initial_data['features'])[:, 1]  # positive class only
         group_ids = np.repeat(labelname, len(labels))
         labels, weights = communication.update_labels_and_weights(labels, weights, group_ids, scores,
                                                                   threshold=threshold)
@@ -181,7 +189,7 @@ def store_projection(model, weightfile=None, use_gpu=True, socket_id=None):
 
 
 def update_embedding_handler(socket_id):
-    print('action ! -> time : {:.1f}s'.format(time.time()-START_TIME))
+    print('action ! -> time : {:.1f}s'.format(time.time() - START_TIME))
     nodes = []
     for x in range(0, 2400):
         nodes.append({'id': x, 'x': round(uniform(0, 25), 2), 'y': round(uniform(0, 25))})
@@ -191,28 +199,31 @@ def update_embedding_handler(socket_id):
     response = requests.post("http://localhost:3000/api/v1/updateEmbedding", data=json.dumps(payload), headers=headers)
     print(response)
 
+
 def weightfile_path(uid, d_name, make_dirs=True):
     weightfile = f"./user_models/{uid}/"
     if make_dirs and not os.path.isdir(weightfile):
         os.makedirs(weightfile)
     return os.path.join(weightfile, f'{d_name}_model.pth.tar')
 
+
 class SetInterval:
     """
     inspired from https://stackoverflow.com/questions/2697039/python-equivalent-of-setinterval/48709380#48709380
     """
+
     def __init__(self, interval, action):
         self.socket_id = ''
         self.interval = interval
         self.action = action
         self.stopEvent = threading.Event()
         self.thread = threading.Thread(target=self.__set_interval)
-        #self.thread.start()
-        #self.next_time = 0
+        # self.thread.start()
+        # self.next_time = 0
 
     def __set_interval(self):
         next_time = time.time() + self.interval
-        while not self.stopEvent.wait(next_time-time.time()):
+        while not self.stopEvent.wait(next_time - time.time()):
             next_time += self.interval
             self.action(self.socket_id)
 
@@ -224,11 +235,13 @@ class SetInterval:
         print('stop timer')
         self.stopEvent.set()
 
+
 class MyHTTPHandler(BaseHTTPRequestHandler):
     """
     ### MyHTTPHandler beschreibt den Umgang mit HTTP Requests
     """
-    #http://donghao.org/2015/06/18/override-the-__init__-of-basehttprequesthandler-in-python/
+
+    # http://donghao.org/2015/06/18/override-the-__init__-of-basehttprequesthandler-in-python/
 
     def __init__(self, request, client_address, server):
         self.socket_id = ''
@@ -251,7 +264,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             ### POST Request Header ###
             self.send_response(200)
             # self.send_header('Content-type', 'application/json')
-            #self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
+            # self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
             self.end_headers()
 
             # get query from paths
@@ -266,7 +279,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             print(f'Request file: {file}')
 
             with open(file, 'rb') as file:
-                self.wfile.write(file.read()) # Read the file and send the contents
+                self.wfile.write(file.read())  # Read the file and send the contents
 
     def do_POST(self):
         """
@@ -280,7 +293,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 ### POST Request Header ###
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
-                #self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
+                # self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
                 self.end_headers()
 
                 # get body from request
@@ -289,28 +302,29 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                 # convert body to list
                 # data = json.loads(str(body).decode('utf-8'))  # python 2
-                data = json.loads(str(body, encoding='utf-8'))      # python 3
+                data = json.loads(str(body, encoding='utf-8'))  # python 3
 
                 # DEBUGging 'data'
                 # print "\033[32;1m", "DATA:", data, "\033[0m"
-                print("  -> data:", [(k, type(v)) for (k,v) in data.items()])
+                print("  -> data:", [(k, type(v)) for (k, v) in data.items()])
 
                 try:
                     user_id = data["userId"]
                 except KeyError:
-                    user_id = 0      #DEBUG
+                    user_id = 0  # DEBUG
                     print("WARNING: No `userId` given, assigning 0.")
 
                 # Katjas code goes here
 
-                if "init" in data.keys(): # initial call
+                if "init" in data.keys():  # initial call
                     # choose and note dataset for user
                     dataset_name = data["dataset"]
                     if user_id not in user_datas:
                         user_datas[user_id] = UserData(user_id)
                     user_datas[user_id].dataset = dataset_name
-                    #user_datas[user_id].idx_to_id = dict([(k, v['name']) for k, v in data['nodes'].iteritems()])
-                    user_datas[user_id].svm_ids = np.array([v['index'] for v in data['nodes'].values()]) # store which keys are used, for the svm
+                    # user_datas[user_id].idx_to_id = dict([(k, v['name']) for k, v in data['nodes'].iteritems()])
+                    user_datas[user_id].svm_ids = np.array(
+                        [v['index'] for v in data['nodes'].values()])  # store which keys are used, for the svm
 
                     # if dataset not yet initialized, catch up
                     if dataset_name not in initial_datas:
@@ -343,12 +357,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                               f"init: {data['init']}")
 
                     user_datas[user_id].graph_df = communication.make_graph_df(
-                                            image_ids=initial_data['image_id'],
-                                            projection=proj,
-                                            info_df=initial_data['info'],
-                                            coordinate_range=LIMITS)
-
-
+                        image_ids=initial_data['image_id'],
+                        projection=proj,
+                        info_df=initial_data['info'],
+                        coordinate_range=LIMITS)
 
                     graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
 
@@ -359,10 +371,10 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     if sendback:
                         self.wfile.write(graph_json)
                     else:
-                        self.wfile.write('{"done": true}')
+                        self.wfile.write(b'{"done": true}')
                     return
 
-                else:                          # subsequent call
+                else:  # subsequent call
                     # finetuning... not working yet with dim 512, but 4096 needs new feature files
                     # load model
                     with torch.cuda.device(DEVICE):
@@ -371,9 +383,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                         weightfile = weightfile_path(user_id, dataset_name)
 
-                        if os.path.isfile(weightfile): # not first iteration
+                        if os.path.isfile(weightfile):  # not first iteration
                             model = load_model(weightfile)
-                        else: # first iteration
+                        else:  # first iteration
                             model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
                         model.cuda()
 
@@ -386,15 +398,17 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         lbl = np.array(lbl, dtype=np.long)
                         """
                         # gen labels sorting via image_id
-                        #TODO: time data preparation
-                        lbl_dict = {v['name']:v['groupId'] for v in data['nodes'].values()}
-                        id_feat  = zip(initial_data['image_id'], initial_data['features_raw'])
-                        ids, labels, features = zip(*[(name, lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
-                        unique, labels = np.unique(labels, return_inverse=True) # works only in python 2.7, since None < all
-                        labels   = np.array(labels) if None in unique else np.array(labels) + 1 # ensure empty label is 0
+                        # TODO: time data preparation
+                        lbl_dict = {v['name']: v['groupId'] for v in data['nodes'].values()}
+                        id_feat = zip(initial_data['image_id'], initial_data['features_raw'])
+                        ids, labels, features = zip(
+                            *[(name, lbl_dict[name], feat) for name, feat in id_feat if name in lbl_dict])
+                        unique, labels = np.unique(labels,
+                                                   return_inverse=True)  # works only in python 2.7, since None < all
+                        labels = np.array(labels) if None in unique else np.array(labels) + 1  # ensure empty label is 0
                         features = np.array(features)
                         del lbl_dict, id_feat, unique
-                        #TODO: end timing
+                        # TODO: end timing
 
                         train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
 
@@ -403,10 +417,11 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                         # reply with new projection
                         user_datas[user_id].graph_df = communication.make_graph_df(
-                                                image_ids=ids, projection=proj,
-                                                info_df=initial_data['info'],
-                                                coordinate_range=LIMITS)
-                        graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
+                            image_ids=ids, projection=proj,
+                            info_df=initial_data['info'],
+                            coordinate_range=LIMITS)
+                        graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df,
+                                                                    max_elements=MAX_DISPLAY)
                         user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
 
                         self.wfile.write(graph_json)
@@ -418,11 +433,8 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     return
                 """
 
-
                 # shortcut for data access
                 # initial_data = initial_datas[user_datas[user_id].dataset]
-
-
 
                 # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
                 self.wfile.write(graph_json)  # body zurueckschicken
@@ -430,7 +442,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": {"msg": str(e),
                                                        "type": str(type(e)),
                                                        "loc": "/nodes"}
-                                            }))  # error body zurueckschicken
+                                             }))  # error body zurueckschicken
                 raise
 
         if self.path == "/getGroupNeighbours":
@@ -447,9 +459,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                 # convert body to list
                 # data = json.loads(str(body).decode('utf-8'))  # python 2
-                data = json.loads(str(body, encoding='utf-8'))      # python 3
+                data = json.loads(str(body, encoding='utf-8'))  # python 3
 
-                #DEBUG!
+                # DEBUG!
                 print("\033[32;1m", "DATA:", data, "\033[0m")
 
                 # choose right dataset
@@ -460,7 +472,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                 group_id = int(data['groupId'])
                 thresh = float(data['threshold'])
-                if 'negatives' not in data.keys():          # first iteration
+                if 'negatives' not in data.keys():  # first iteration
                     idx_pos = data['positives']
                     idx_neg = None
                     user_data.svm_negs = set()
@@ -470,13 +482,13 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     user_data.svm_negs = idx_neg
 
                 feat = initial_data['features'][user_data.svm_ids]
-                #convert idx_pos, idx_neg here
+                # convert idx_pos, idx_neg here
                 idx_pos_inner = np.in1d(user_data.svm_ids, idx_pos).nonzero()[0]
                 idx_neg_inner = np.in1d(user_data.svm_ids, idx_neg).nonzero()[0]
                 neighbor_idcs, scores, svm = svm_k_nearest_neighbors(feat, idx_pos_inner, idx_neg_inner,
-                                                                    max_rand_negatives=10,
-                                                                    k=-1, verbose=False)
-                neighbor_idcs = user_data.svm_ids[neighbor_idcs]
+                                                                     max_rand_negatives=10,
+                                                                     k=-1, verbose=False)
+                neighbor_idcs = user_data.svm_ids[neighbor_idcs].tolist()
 
                 """ #DEBUG!
                 reversed_idcs = user_data.svm_ids[idx_pos_inner]
@@ -485,14 +497,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                 # make json
                 return_dict = {'group': idx_pos,
-                               'neighbours': dict(zip(neighbor_idcs, 1. - scores))}     # reverse scores
+                               'neighbours': dict(zip(neighbor_idcs, 1. - scores))}  # reverse scores
                 return_dict = json.dumps(return_dict).encode()
                 self.wfile.write(return_dict)  # body zurueckschicken
             except Exception as e:
                 self.wfile.write(json.dumps({"error": {"msg": str(e),
                                                        "type": str(type(e)),
                                                        "loc": "/getGroupNeighbors"}
-                                            }))  # error body zurueckschicken
+                                             }, indent=4).encode('utf-8'))  # error body zurueckschicken
                 raise
 
         """
@@ -662,6 +674,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         """
         return
 
+
 if __name__ == "__main__":
     # config
     HOST_NAME = "localhost"
@@ -673,4 +686,4 @@ if __name__ == "__main__":
         http_server.serve_forever()
     except KeyboardInterrupt:
         print(time.asctime(), 'Server Stops - %s:%s' % (HOST_NAME, PORT_NUMBER), '- Beenden mit STRG+C')
-http_server.socket.close()
+    http_server.socket.close()

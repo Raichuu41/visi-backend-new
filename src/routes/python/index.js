@@ -159,13 +159,19 @@ router.post('/getGroupNeighbours', async (req, res, next) => {
             }).then(response => response.json());
             const { group, neighbours: allNeighbours } = data;
             console.log({ group, allNeighbours });
-            const newNeighbours = {};
-            Object.keys(allNeighbours)
-                .sort((a, b) => allNeighbours[b] - allNeighbours[a])
-                .slice(0, +threshold)
-                .forEach(e => (newNeighbours[e] = allNeighbours[e]));
-
-            res.json({ group, neighbours: newNeighbours, allData: data });
+            // sort the keys by highest score, slice the best X amount
+            const sorted_neighbours_sliced = Object.keys(allNeighbours).
+                sort(function(a, b) {
+                    return allNeighbours[b] - allNeighbours[a];
+                })
+                .slice(0, +threshold);
+            // convert the best keys from array back to object
+            const final_neighbours = {};
+            sorted_neighbours_sliced.forEach(key => final_neighbours[key] = allNeighbours[key]);
+            console.log(sorted_neighbours_sliced);
+            // get max score  for checking the scores
+            const max = Math.max.apply(null,Object.keys(allNeighbours).map(function(x){ return allNeighbours[x] }));
+            res.json({ group, neighbours: final_neighbours, allData: data });
             const diff = process.hrtime(time);
             console.log(`getGroupNeighbours from python took ${diff[0] + diff[1] / 1e9} seconds`);
         } catch (err) {

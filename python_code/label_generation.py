@@ -37,13 +37,12 @@ def svm_k_nearest_neighbors(vectors, positive_idcs, negative_idcs=None, max_rand
 
     clf.fit(X=train_data, y=train_labels, sample_weight=sample_weights)
     prob = clf.predict_proba(vectors)[:, 1]
-
     # send labeled samples to beginning when sorting
     prob[positive_idcs] = 2
     prob[negative_idcs] = 2
 
-    neighbors = np.argsort(prob)[-1::-1]        # sort in decreasing order
-    neighbors = neighbors[(N_positive+N_negative):]         # skip the labeled samples
+    neighbors = np.argsort(prob)[-1::-1]  # sort in decreasing order
+    neighbors = neighbors[(N_positive+N_negative):]  # skip the labeled samples
 
     stop = time.time()
     if verbose:

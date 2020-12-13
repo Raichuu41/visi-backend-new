@@ -30,6 +30,13 @@ const dataSet = [
     },
     /*
     {
+        id: '010',
+        name: 'small_test_100',
+        description: 'Test for SVM Matching',
+        imgPath: path.join(__dirname, '../../images/small_test_100'),
+        size: 73,
+    },
+    {
         id: '005',
         name: 'test_data',
         description: 'Some test data for testing',

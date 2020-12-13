@@ -162,7 +162,7 @@ router.post('/getGroupNeighbours', async (req, res, next) => {
             // sort the keys by highest score, slice the best X amount
             const sorted_neighbours_sliced = Object.keys(allNeighbours).
                 sort(function(a, b) {
-                    return allNeighbours[b] - allNeighbours[a];
+                    return allNeighbours[a] - allNeighbours[b];
                 })
                 .slice(0, +threshold);
             // convert the best keys from array back to object

@@ -85,7 +85,13 @@ def initialize_dataset(dataset_name):
                                    feature_dim=FEATURE_DIM, outdir=DATA_DIR)
     initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'), raw_features=True)
     initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
-    # embed() #DEBUG!!
+    # sort the features, projection and image IDs
+    sorted_idx = np.argsort(initial_datas[dataset_name]['image_id'])
+    initial_datas[dataset_name]['image_id'] = [initial_datas[dataset_name]['image_id'][i] for i in sorted_idx]
+    initial_datas[dataset_name]['info'] = initial_datas[dataset_name]['info'].iloc[sorted_idx]
+    for key, value in initial_datas[dataset_name].items():
+        if isinstance(initial_datas[dataset_name][key], np.ndarray):
+            initial_datas[dataset_name][key] = value[sorted_idx]
     print(f'Done [{dataset_name}].')
 
 
@@ -475,13 +481,16 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 if 'negatives' not in data.keys():  # first iteration
                     idx_pos = data['positives']
                     idx_neg = None
-                    user_data.svm_negs = set()
+                    user_data.svm_negs = []
                 else:
                     idx_pos = data['positives']
-                    idx_neg = (set(data['negatives']) | user_data.svm_negs).difference(idx_pos)
+                    idx_neg = [x for x in list(dict.fromkeys(data['negatives'] + user_data.svm_negs))
+                               if x not in idx_pos]
+                    # idx_neg = list((set(data['negatives']) | set(user_data.svm_negs)).difference(idx_pos))
                     user_data.svm_negs = idx_neg
 
                 feat = initial_data['features'][user_data.svm_ids]
+
                 # convert idx_pos, idx_neg here
                 idx_pos_inner = np.in1d(user_data.svm_ids, idx_pos).nonzero()[0]
                 idx_neg_inner = np.in1d(user_data.svm_ids, idx_neg).nonzero()[0]
@@ -498,7 +507,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 # make json
                 return_dict = {'group': idx_pos,
                                'neighbours': dict(zip(neighbor_idcs, 1. - scores))}  # reverse scores
+                max_score = max([x for x in return_dict['neighbours'].values()])
                 return_dict = json.dumps(return_dict).encode()
+
                 self.wfile.write(return_dict)  # body zurueckschicken
             except Exception as e:
                 self.wfile.write(json.dumps({"error": {"msg": str(e),

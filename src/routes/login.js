@@ -15,9 +15,9 @@ const connection = mysql.createConnection({
 
 connection.connect((err) => {
     if (!err) {
-        console.log('Database is connected ... nn');
+        console.log('Successfully connected to the database!');
     } else {
-        console.log('Error connecting database ... nn');
+        console.log('Error connecting to the database');
         console.log(err);
     }
 });
@@ -33,15 +33,15 @@ router.post('/login', async (req, res, next) => {
     if (!password) return res.json({ message: 'password missing' });
     if (connection.state === 'disconnected') return res.json({ message: 'database connection missing' });
     try {
-        connection.query('SELECT * FROM vis_users WHERE name = ? ', [user], (error, results, fields) => {
+        connection.query('SELECT * FROM user_accounts WHERE user_name = ? ', [user], (error, results, fields) => {
             console.log(results);
             if (error) return next(error);
             if (results.length > 0) {
                 // check pw
                 if (results[0].password !== md5(password)) return res.json({ message: 'Incorrect Password!' });
-                return res.json({ isAuth: true, id: results[0].id, user: results[0].name });
+                return res.json({ isAuth: true, id: results[0]['user_id'], user: results[0]['user_name'] });
             }
-            return res.json({ message: 'Incorrect Username' });
+            return res.json({ message: 'Username not found!' });
         });
     } catch (e) {
         return next(e);

@@ -371,8 +371,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     graph_json = communication.graph_df_to_json(user_datas[user_id].graph_df, max_elements=MAX_DISPLAY)
 
                     user_datas[user_id].index_to_id = communication.make_index_to_id_dict(graph_json)
-                    # embed() #DEBUG!!
-
                     # send projections on resume call
                     if sendback:
                         self.wfile.write(graph_json)

@@ -32,6 +32,21 @@ router.get('/', async (req, res, next) => {
     // res.json({ snapshots: [] });
 });
 
+router.get('/load', async (req, res, next) => {
+    console.log('GET: snapshots load')
+    const snapshotId = req.query.snapshot;
+    try {
+        const data = await fetch(`${pythonApi}/loadSnapshot?snapshot=${snapshotId}`)
+            .then(response => response.json());
+        res.json(data);
+    } catch (err) {
+        console.error('error - loading snapshot data');
+        console.error(err);
+        next(err);
+    }
+})
+
+
 router.post('/', async (req, res, next) => {
     console.log('POST: snapshots');
 

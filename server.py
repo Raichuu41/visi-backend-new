@@ -318,6 +318,15 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             result = cursor.fetchall()
             self.wfile.write(json.dumps(result, indent=4, default=str).encode())
 
+        if '/loadSnapshot' in self.path:
+            self.send_response(200)
+            self.end_headers()
+            query = self.path.split('?')[1]
+            snapshot_id = query.split('=')[1]
+            with open(f'snapshots/snapshot_{snapshot_id}.json', 'r', encoding='utf-8') as snap_file:
+                data = json.load(snap_file)
+            self.wfile.write(json.dumps(data, indent=4, ).encode())
+
     def do_POST(self):
         """
         definiert den Umgang mit POST Requests
@@ -334,13 +343,20 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             user_id = data['userid']
             dataset_id = data['dataset']
             dataset_count = data['count']
+            groups_count = len(data['groups'])
             snapshot_name = 'Delta'  # todo:: later should be defined by request data
             modified_model = False  # todo:: later should be defined by request data
             cursor = db_connection.cursor()
             # insert new row for snapshots data
-            cursor.execute('''INSERT INTO visiexp.snapshots (user_id, snapshot_name, dataset_id, 
-            modified_model, count) VALUES (%s, %s, %s, %s, %s)''',
-                           (user_id, snapshot_name, dataset_id, modified_model, dataset_count))
+            try:
+                cursor.execute('''INSERT INTO visiexp.snapshots (user_id, snapshot_name, dataset_id, 
+                modified_model, count, groups_count) VALUES (%s, %s, %s, %s, %s, %s)''',
+                               (user_id, snapshot_name, dataset_id, modified_model, dataset_count, groups_count))
+            except mysql.connector.Error as e:
+                print(f'Error: {e}')
+                self.send_response(500)
+                self.wfile.write(b'{"status": "failed"}')
+                return
             generated_snapshot_id = cursor.lastrowid
             check_amount_of_snapshots(user_id, dataset_id)
             save_snapshot(data, generated_snapshot_id)

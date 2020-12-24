@@ -6,9 +6,9 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
     console.log('GET: snapshots');
-    const { dataset, userid } = req.query;
+    const { userid, dataset } = req.query;
     console.log(dataset, userid);
-    if (!dataset || !userid) return next(new Error('dataset od userid missing'));
+    if (!dataset || !userid) return next(new Error('dataset ID or User ID is missing'));
 
     if (process.env.NODE_ENV === 'development') {
         res.json([{
@@ -19,7 +19,7 @@ router.get('/', async (req, res, next) => {
         }]);
     } else {
         try {
-            const data = await fetch(`${pythonApi}/snapshots?dataset=${dataset}&userid=${userid}`).then(response => response.json());
+            const data = await fetch(`${pythonApi}/getSnapshots?userid=${userid}&dataset=${dataset}`).then(response => response.json());
             res.json(data);
         } catch (err) {
             console.error('error - loading snapshots - python error');
@@ -38,6 +38,7 @@ router.post('/', async (req, res, next) => {
     const {
         nodes, groups, dataset, count, userid,
     } = req.body;
+    /*
     console.log({
         nodes,
         groups,
@@ -45,7 +46,7 @@ router.post('/', async (req, res, next) => {
         count,
         userid,
     });
-
+    */
     if (process.env.NODE_ENV === 'development') {
         res.json({
             message: 'Snapshot not saved in dev mode',
@@ -53,14 +54,13 @@ router.post('/', async (req, res, next) => {
     } else {
         console.log('send snapshot to python');
         try {
-            const r = await fetch(`${pythonApi}/snapshot`, {
+            await fetch(`${pythonApi}/saveSnapshot`, {
                 method: 'POST',
                 header: { 'Content-type': 'application/json' },
                 body: JSON.stringify({
                     nodes, groups, dataset, count, userid,
                 }),
             }).then(response => response.text());
-            console.log({ r });
             res.json({
                 message: 'Snapshot saved',
             });

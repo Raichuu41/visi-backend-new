@@ -3,17 +3,11 @@
 Created on Thu Feb 27 09:25:24 2018
 @author: jlibor
 """
-### Aktuelle Version als Hilfe ausgeben
-import matplotlib
-import matplotlib.pyplot as plt
+# Aktuelle Version als Hilfe ausgeben
 import os
 import sys
 import numpy as np
 import torch
-import deepdish as dd
-import torchvision
-import functools
-import pandas as pd
 from http.server import BaseHTTPRequestHandler, HTTPServer  # python 3
 import json
 # from compute_embedding_snack import compute_graph
@@ -26,9 +20,8 @@ from python_code.label_generation import svm_k_nearest_neighbors
 import python_code.train as train
 from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
-import pickle
+import mysql.connector
 
-# from IPython import embed
 
 N_LAYERS = 0
 DATA_DIR = sys.argv[1]
@@ -93,23 +86,6 @@ def initialize_dataset(dataset_name):
         if isinstance(initial_datas[dataset_name][key], np.ndarray):
             initial_datas[dataset_name][key] = value[sorted_idx]
     print(f'Done [{dataset_name}].')
-
-
-def dataset_id_to_name(ds_id):
-    "not needed anymore"
-    d = {'002': 'Wikiart_artist49_images',
-         '003': 'AwA2_vectors_train',
-         '004': 'AwA2_vectors_test',
-         '005': 'STL_label_train',
-         '006': 'STL_label_test',
-         '011': 'STL_label_test_random',
-         '001': 'Wikiart_Elgammal_EQ_artist_test',
-         '008': 'Wikiart_Elgammal_EQ_artist_train',
-         '009': 'Wikiart_Elgammal_EQ_genre_train',
-         '010': 'Wikiart_Elgammal_EQ_genre_test'
-         }
-
-    return d[ds_id]
 
 
 def generate_projections(model, features):
@@ -213,6 +189,50 @@ def weightfile_path(uid, d_name, make_dirs=True):
     return os.path.join(weightfile, f'{d_name}_model.pth.tar')
 
 
+def save_snapshot(data, snapshot_id):
+    with open(f'snapshots/snapshot_{snapshot_id}.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def delete_snapshot(snapshot_id):
+    snapshot_path = f'snapshots/snapshot_{snapshot_id}.json'
+    if os.path.exists(snapshot_path):
+        os.remove(snapshot_path)
+        print(f'Successfully deleted the snapshot with ID {snapshot_id}!')
+    else:
+        raise ValueError(f'Something went wrong. There was no snapshot with ID {snapshot_id}!')
+
+
+def check_amount_of_snapshots(user_id, dataset_id, max_allowed=5):
+    """
+    | Checks the amount of snapshots saved in the database for given user ID and dataset ID.
+    | If the amount exceeds the maximum allowed, the oldest snapshots will be deleted
+
+    :param int user_id: ID of the user
+    :param int dataset_id: ID of the dataset
+    :param int max_allowed: Maximum allowed number of saved snapshots for a given user on the specified dataset
+    """
+    query = '''select * from visiexp.snapshots where user_id = %s and dataset_id = %s'''
+    cursor = db_connection.cursor()
+    cursor.execute(query, (user_id, dataset_id))
+    results = cursor.fetchall()
+    results_amount = len(results)
+    if results_amount > max_allowed:
+        # figure out how many snapshots have to be deleted
+        amount_to_delete = results_amount - max_allowed
+        # get the snapshot IDs which will be deleted for later usage
+        get_ids_query = '''select snapshot_id from visiexp.snapshots where user_id = %s and dataset_id = %s
+                        order by created_at limit %s'''
+        cursor.execute(get_ids_query, (user_id, dataset_id, amount_to_delete))
+        deleted_snapshot_ids = [snapshot_id[0] for snapshot_id in cursor.fetchall()]
+        # delete the oldest snapshots
+        delete_query = '''delete from visiexp.snapshots where user_id = %s and dataset_id = %s
+                        order by created_at limit %s'''
+        cursor.execute(delete_query, (user_id, dataset_id, amount_to_delete))
+        # delete the data of snapshots which were deleted from the database
+        for snapshot_id in deleted_snapshot_ids:
+            delete_snapshot(snapshot_id)
+
 class SetInterval:
     """
     inspired from https://stackoverflow.com/questions/2697039/python-equivalent-of-setinterval/48709380#48709380
@@ -267,7 +287,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         # by julian
         if "/getNodes" in self.path:
             print("GET /getNodes")
-            ### POST Request Header ###
+            # POST Request Header
             self.send_response(200)
             # self.send_header('Content-type', 'application/json')
             # self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
@@ -286,6 +306,17 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
             with open(file, 'rb') as file:
                 self.wfile.write(file.read())  # Read the file and send the contents
+        if '/getSnapshots' in self.path:
+            self.send_response(200)
+            self.end_headers()
+            query = self.path.split('?')[1]
+            # extract the parameters, expected format: abc=123&xyz=456
+            user_id, dataset_id = [x.split('=')[-1] for x in query.split('&')]
+            cursor = db_connection.cursor(dictionary=True)
+            query = '''select * from visiexp.snapshots where user_id = %s and dataset_id = %s'''
+            cursor.execute(query, (user_id, dataset_id))
+            result = cursor.fetchall()
+            self.wfile.write(json.dumps(result, indent=4, default=str).encode())
 
     def do_POST(self):
         """
@@ -293,10 +324,33 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         Liest den Body aus - gibt ihn zum konvertieren weiter
         """
         global user_datas
+        if '/saveSnapshot' in self.path:
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            content_len = int(self.headers['Content-Length'])
+            body = self.rfile.read(content_len)
+            data = json.loads(str(body, encoding='utf-8'))
+            user_id = data['userid']
+            dataset_id = data['dataset']
+            dataset_count = data['count']
+            snapshot_name = 'Delta'  # todo:: later should be defined by request data
+            modified_model = False  # todo:: later should be defined by request data
+            cursor = db_connection.cursor()
+            # insert new row for snapshots data
+            cursor.execute('''INSERT INTO visiexp.snapshots (user_id, snapshot_name, dataset_id, 
+            modified_model, count) VALUES (%s, %s, %s, %s, %s)''',
+                           (user_id, snapshot_name, dataset_id, modified_model, dataset_count))
+            generated_snapshot_id = cursor.lastrowid
+            check_amount_of_snapshots(user_id, dataset_id)
+            save_snapshot(data, generated_snapshot_id)
+            db_connection.commit()  # save changes to the database
+            print(f'Successfully saved the snapshot {snapshot_name} with ID {generated_snapshot_id}!')
+            self.wfile.write(b'{}')
         if self.path == "/nodes":
             try:
                 print("post /nodes")
-                ### POST Request Header ###
+                # POST Request Header
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 # self.send_header('Access-Control-Allow-Origin', self.headers['origin'])
@@ -319,8 +373,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 except KeyError:
                     user_id = 0  # DEBUG
                     print("WARNING: No `userId` given, assigning 0.")
-
-                # Katjas code goes here
 
                 if "init" in data.keys():  # initial call
                     # choose and note dataset for user
@@ -430,18 +482,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
                         self.wfile.write(graph_json)
                         return
-                """
-                else: # no 'init' in `data`
-                    print("ERROR: No init given")
-                    self.wfile.write("{'error': 'no init-flag given'}")
-                    return
-                """
-
-                # shortcut for data access
-                # initial_data = initial_datas[user_datas[user_id].dataset]
-
-                # print "\033[31;1m", "JSON:", graph_json, "\033[0m" #DEBUG!
-                self.wfile.write(graph_json)  # body zurueckschicken
             except Exception as e:
                 self.wfile.write(json.dumps({"error": {"msg": str(e),
                                                        "type": str(type(e)),
@@ -496,11 +536,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                                      max_rand_negatives=10,
                                                                      k=-1, verbose=False)
                 neighbor_idcs = user_data.svm_ids[neighbor_idcs].tolist()
-
-                """ #DEBUG!
-                reversed_idcs = user_data.svm_ids[idx_pos_inner]
-                print "REVERSED IDX (debug):", reversed_idcs
-                """
 
                 # make json
                 return_dict = {'group': idx_pos,
@@ -689,6 +724,19 @@ if __name__ == "__main__":
     HOST_NAME = "localhost"
     PORT_NUMBER = 8023
     print(SPLASH)
+    db_config = {
+        'user': 'visi',
+        'password': 'test123',
+        'host': 'localhost',
+        'database': 'visiexp',
+        'raise_on_warnings': True
+    }
+    try:
+        db_connection = mysql.connector.connect(**db_config)
+        print('Successfully connected to the database!')
+    except mysql.connector.Error:
+        print('Failed to connect to the database!')
+        exit()
     try:
         http_server = HTTPServer((HOST_NAME, PORT_NUMBER), MyHTTPHandler)
         print(time.asctime(), 'Server Starts - %s:%s' % (HOST_NAME, PORT_NUMBER), '- Beenden mit STRG+C')

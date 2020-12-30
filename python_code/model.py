@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import vgg16_bn
-# from aux import load_weights
+from .aux import load_weights
 
 
 def load_featurenet(verbose=False):

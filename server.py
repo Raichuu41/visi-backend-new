@@ -20,7 +20,10 @@ from python_code.label_generation import svm_k_nearest_neighbors
 import python_code.train as train
 from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
-import mysql.connector
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    import mysql.connector
 
 
 N_LAYERS = 0
@@ -58,7 +61,7 @@ class UserData:
     def __init__(self, user_id):
         print(f"[[ creating user {user_id} ]]")  # DEBUG!
         self.user_id = user_id
-        self.dataset = None  # dataset the user is working on
+        self.dataset = ''  # dataset the user is working on
         self.svm_ids = []
         self.svm_negs = set()
 
@@ -70,6 +73,11 @@ class UserData:
     def __repr__(self):
         return f"<UserData({self.user_id}) at {id(self)}>"
 
+    def get_user_id(self):
+        return self.user_id
+
+    def get_current_dataset(self):
+        return self.dataset
 
 def initialize_dataset(dataset_name):
     print(f'Initialize {dataset_name}...')
@@ -183,7 +191,7 @@ def update_embedding_handler(socket_id):
 
 
 def weightfile_path(uid, d_name, make_dirs=True):
-    weightfile = f"./user_models/{uid}/"
+    weightfile = f"./user_models/user_id_{uid}/"
     if make_dirs and not os.path.isdir(weightfile):
         os.makedirs(weightfile)
     return os.path.join(weightfile, f'{d_name}_model.pth.tar')
@@ -344,7 +352,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             dataset_id = data['dataset']
             dataset_count = data['count']
             groups_count = len(data['groups'])
-            snapshot_name = 'Delta'  # todo:: later should be defined by request data
+            snapshot_name = data['snapshotName']
             modified_model = False  # todo:: later should be defined by request data
             cursor = db_connection.cursor()
             # insert new row for snapshots data
@@ -449,26 +457,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 else:  # subsequent call
                     # finetuning... not working yet with dim 512, but 4096 needs new feature files
                     # load model
-                    with torch.cuda.device(DEVICE):
-                        dataset_name = user_datas[user_id].dataset
+                    # with torch.cuda.device(DEVICE):
+                    if True:
+                        dataset_name = user_datas[user_id].get_current_dataset()
                         initial_data = initial_datas[dataset_name]
-
-                        weightfile = weightfile_path(user_id, dataset_name)
-
-                        if os.path.isfile(weightfile):  # not first iteration
-                            model = load_model(weightfile)
-                        else:  # first iteration
-                            model = mapnet(N_LAYERS, pretrained=True, new_pretrain=True)
+                        model = temporary_models[user_id] if user_id in temporary_models else mapnet(
+                            N_LAYERS, pretrained=True, new_pretrain=True
+                        )
                         model.cuda()
-
-                        """# gen labels [OLD]
-                        lbl = [(int(k), v['groupId']) for k, v in data["nodes"].iteritems()]
-                        lbl.sort(key=lambda x:x[0])
-                        idx, lbl = zip(*lbl)
-                        assert min(idx) == 0 and max(idx) == len(idx) - 1, "Not all nodes given in POST/nodes"
-                        lbl = [x if x is not None else 0 for x in lbl]
-                        lbl = np.array(lbl, dtype=np.long)
-                        """
                         # gen labels sorting via image_id
                         # TODO: time data preparation
                         lbl_dict = {v['name']: v['groupId'] for v in data['nodes'].values()}
@@ -482,7 +478,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         del lbl_dict, id_feat, unique
                         # TODO: end timing
 
-                        train.train_mapnet(model, features, labels, verbose=True, outpath=weightfile)
+                        train.train_mapnet(model, features, labels, verbose=True)
 
                         # generate projection with new model
                         proj = generate_projections(model, features)
@@ -747,6 +743,7 @@ if __name__ == "__main__":
         'database': 'visiexp',
         'raise_on_warnings': True
     }
+    temporary_models = {}
     try:
         db_connection = mysql.connector.connect(**db_config)
         print('Successfully connected to the database!')

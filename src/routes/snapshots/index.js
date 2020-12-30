@@ -51,17 +51,8 @@ router.post('/', async (req, res, next) => {
     console.log('POST: snapshots');
 
     const {
-        nodes, groups, dataset, count, userid,
+        nodes, groups, dataset, count, userid, snapshotName,
     } = req.body;
-    /*
-    console.log({
-        nodes,
-        groups,
-        dataset,
-        count,
-        userid,
-    });
-    */
     if (process.env.NODE_ENV === 'development') {
         res.json({
             message: 'Snapshot not saved in dev mode',
@@ -73,11 +64,11 @@ router.post('/', async (req, res, next) => {
                 method: 'POST',
                 header: { 'Content-type': 'application/json' },
                 body: JSON.stringify({
-                    nodes, groups, dataset, count, userid,
+                    nodes, groups, dataset, count, userid, snapshotName,
                 }),
             }).then(response => response.text());
             res.json({
-                message: 'Snapshot saved',
+                message: 'Snapshot saved successfully',
             });
         } catch (err) {
             console.error('error - save snapshots python error');

@@ -10,7 +10,7 @@ export default socket => async (data) => {
     let time = 0;
 
     // HINT The data should never by empty - inital nodes comes from getNodes
-    const { nodes, userId, count, embeddingDegree } = data;
+    const { nodes, userId, count, embeddingDegree, datasetId } = data;
     // categories can but don't have to change
     let categories;
 

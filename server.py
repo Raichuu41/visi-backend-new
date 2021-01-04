@@ -351,7 +351,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 model = mapnet(N_LAYERS, pretrained=False, new_pretrain=True)
                 model.load_state_dict(torch.load(f'snapshots/model_{snapshot_id}.pth'))
                 model.eval()
-                temporary_models[user_id] = model
+                temporary_models[user_id] = model  # save model for future references
             self.wfile.write(json.dumps(data, indent=4, ).encode())
 
     def do_POST(self):

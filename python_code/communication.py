@@ -15,9 +15,11 @@ def make_graph_df(image_ids, projection, info_df=None, coordinate_range=(-1, 1))
     df = pd.DataFrame(data=coordinates, index=image_ids, columns=('x', 'y'))
     df['group'] = None
     df['weight'] = None
+    """
     if info_df is not None:
         df = pd.concat([df, info_df], axis=1).reindex(df.columns)
         # df = pd.concat([df, info_df], axis=1, join_axes=[df.index])     # add available information to images with existing coordinates
+    """
     return df
 
 

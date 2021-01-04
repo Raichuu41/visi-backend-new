@@ -222,7 +222,7 @@ def delete_snapshot(snapshot_id):
         raise ValueError(f'Something went wrong. There was no snapshot with ID {snapshot_id}!')
 
 
-def check_amount_of_snapshots(user_id, dataset_id, max_allowed=5):
+def check_amount_of_snapshots(user_id, dataset_id, max_allowed=2):
     """
     | Checks the amount of snapshots saved in the database for given user ID and dataset ID.
     | If the amount exceeds the maximum allowed, the oldest snapshots will be deleted
@@ -344,7 +344,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             query = self.path.split('?')[1]
             first_part, second_part = query.split('&', 1)
             snapshot_id = first_part.split('=')[1]
-            user_id = second_part.split('=')[1]
+            user_id = int(second_part.split('=')[1])
             with open(f'snapshots/snapshot_{snapshot_id}.json', 'r', encoding='utf-8') as snap_file:
                 data = json.load(snap_file)
             if data['modelChanged']:  # load model if it was modified
@@ -367,7 +367,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             content_len = int(self.headers['Content-Length'])
             body = self.rfile.read(content_len)
             data = json.loads(str(body, encoding='utf-8'))
-            user_id = data['userid']
+            user_id = int(data['userid'])
             dataset_id = data['dataset']
             dataset_count = data['count']
             groups_count = len(data['groups'])
@@ -388,7 +388,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             check_amount_of_snapshots(user_id, dataset_id)
             save_snapshot(data, generated_snapshot_id)
             if modified_model:  # model was changed
-                save_model(temporary_models[user_id])
+                save_model(temporary_models[user_id], generated_snapshot_id)
             db_connection.commit()  # save changes to the database
             print(f'Successfully saved the snapshot {snapshot_name} with ID {generated_snapshot_id}!')
             self.wfile.write(b'{}')
@@ -414,7 +414,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 print("  -> data:", [(k, type(v)) for (k, v) in data.items()])
 
                 try:
-                    user_id = data["userId"]
+                    user_id = int(data["userId"])
                 except KeyError:
                     user_id = 0  # DEBUG
                     print("WARNING: No `userId` given, assigning 0.")
@@ -437,17 +437,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     # delete old model
                     weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
                     if data['init'] == 'new':
-                        if os.path.isfile(weightfile):
-                            print("DEBUG!! NEW: removing old model")
-                            os.remove(weightfile)
-                        else:
-                            print("DEBUG!! NEW: no old model to remove")
-                    else:
-                        if os.path.isfile(weightfile):
-                            print("DEBUG!! RESUME: keeping old model")
-                        else:
-                            print("DEBUG!! RESUME: no old model to keep")
-
+                        temporary_models.pop(user_id, None)  # delete previous temporary model if available
                     # set attributes for katja legacy and svm training
                     if os.path.isfile(weightfile) and data['init'] == 'resume':
                         # create a fresh new model
@@ -587,172 +577,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                                                        "loc": "/getGroupNeighbors"}
                                              }, indent=4).encode('utf-8'))  # error body zurueckschicken
                 raise
-
-        """
-        if self.path == "/trainSvm":
-            print("post /trainsvm")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-
-            # get body from request
-            content_len = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_len)
-
-            # convert body to list
-            data = json.loads(str(body).decode('utf-8'))  # python 2
-            #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            print(data)
-
-            # Katjas code goes here
-            # p, n = katja_function(data.p, data.n)
-
-            # make json
-            # data = json.dumps({'p': p, 'n': n}).encode()
-            data = json.dumps(data).encode()
-            self.wfile.write(data)  #body zurueckschicken
-
-        if self.path == "/stopSvm":
-            print("post /stopSvm")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-
-            # get body from request
-            #content_len = int(self.headers['Content-Length'])
-            #body = self.rfile.read(content_len)
-
-            # convert body to list
-            #data = json.loads(str(body).decode('utf-8'))  # python 2
-            #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            #print(data)
-
-            # Katjas code goes here
-            # p, n = katja_function(data.p, data.n)
-
-            # make json
-            #data = json.dumps({p: p, n: n}).encode()
-            self.wfile.write("stopped Svm")  #body zurueckschicken
-
-        if self.path == "/updateLabels":
-            print("post /updateLabels")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-
-            # get body from request
-            content_len = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_len)
-
-            # convert body to list
-            data = json.loads(str(body).decode('utf-8'))  # python 2
-            #data = json.loads(str(body, encoding='utf-8'))      # python 3
-            #print(data)
-
-            # Katjas code goes here
-            # katja_function(data.p, data.n)
-
-            # make json
-            #data = json.dumps({}).encode()
-            self.wfile.write(data)  #body zurueckschicken
-
-        if self.path == "/startUpdateEmbedding":
-            print("post /startUpdateEmbedding")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-
-            # get body from request
-            content_len = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_len)
-
-            # convert body to list
-            body = json.loads(str(body).decode('utf-8'))  # python 2
-            # data = json.loads(str(body, encoding='utf-8'))      # python 3
-            #print(body)
-
-            #print(self.socket_id)
-            self.socket_id = body['socketId']
-            id = body['socketId']
-
-            plot_fn = functools.partial(update_coordinates, socket_id=self.socket_id)
-
-            self.wfile.write('update_embedding started for ' + str(self.socket_id))  # body zurueckschicken
-
-
-            # TODO: USE REAL USER LABELS INSTEAD OF GROUND TRUTH
-            # # infer the current user labels
-            # display_graph_df = communication.json_graph_to_df(body['nodes'])
-            # display_graph_df.index = map(lambda x: index_to_id[x], display_graph_df.index.values.astype(int))
-            #
-            # # update the labels
-            # labels, weights = graph_df.loc[display_graph_df.index, ('group', 'weight')].values.transpose()
-            # new_labels = display_graph_df['group'].values
-            # new_weights = np.where(new_labels != 0, 1, None)
-            # labels, weights = communication.update_labels_and_weights(labels, weights, new_labels, new_weights)
-            #
-            # graph_df.loc[display_graph_df.index, ('group', 'weight')] = zip(labels, weights)
-            #
-            # # infer the labels
-            # print('Generate Labels...')
-            # labels, weights = generate_labels_and_weights()     # these are sorted according to initial_data['image_id']
-            # print('Done.')
-            #
-            # # update the graph
-            # graph_df.loc[initial_data['image_id'], ('group', 'weight')] = zip(labels, weights)
-
-            # load ground truth labels
-            label_file = './MapNetCode/pretraining/wikiart_datasets/info_elgammal_subset_test.hdf5'
-            gt_label_df = dd.io.load(label_file)['df']
-            gt_label_df.index = gt_label_df['image_id']
-            gt_label_df = gt_label_df['artist_name'].dropna()
-            label_to_int = {l: i + 1 for i, l in enumerate(set(gt_label_df.values))}
-            labels = np.array(map(lambda x: label_to_int[x], gt_label_df.values))
-            weights = np.where(labels != 0, 1, None)
-
-            # map labels - just in case
-            sorted_index = map(lambda x: initial_data['image_id'].index(x), gt_label_df.index)
-            labels, weights = labels[sorted_index], weights[sorted_index]
-
-            graph_df.loc[gt_label_df.index, ('group', 'weight')] = zip(labels, weights)
-
-            # set training and output variables and initialize model
-            use_gpu = torch.cuda.is_available()
-            weightfile_mapnet = './models/{}_mapnet.pth.tar'.format(experiment_id)
-            log_dir = './.log/{}'.format(experiment_id)
-
-            model = MapNet(feature_dim=feature_dim, output_dim=projection_dim)
-            if use_gpu:
-                model = model.cuda()
-
-            train.train_mapnet(model, initial_data['features'], labels.astype(np.long), weights=weights.astype(np.float32),
-                               outpath=weightfile_mapnet, log_dir=log_dir, verbose=False,
-                               max_epochs=30, use_gpu=use_gpu, plot_fn=plot_fn)
-
-            store_projection(model, weightfile_mapnet, use_gpu=use_gpu, socket_id=self.socket_id)
-            return 0
-
-            # TODO was ist wenn das mehrfach gestartet wird
-            # self.inter = SetInterval(0.6, update_embedding_handler, id)
-            # self.inter.socket_id = id
-            # self.inter.start()
-            # t = threading.Timer(5, self.inter.cancel)
-            # t.start()
-
-            # make json
-            # data = json.dumps({}).encode()
-
-        if self.path == "/stopUpdateEmbedding":
-            print("post /stopUpdateEmbedding")
-            ### POST Request Header ###
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-        """
         return
 
 

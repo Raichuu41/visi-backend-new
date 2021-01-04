@@ -47,7 +47,6 @@ router.get('/images/:id/:count', async (req, res, next) => {
             const fileName = `${name}#${i}.bin`;
             const filePath = path.join(__dirname, '../../../images/bin/', fileName);
             const stat = fs.statSync(filePath);
-            console.log(i, stat.size, filePath);
             contentSize += stat.size;
             files.push(filePath);
             i++;

@@ -257,10 +257,9 @@ class PartiallyLabeledBatchSampler(BatchSampler):
         :param classweights: dict of form: {l0: w0, l1: w1, ...}
             if classweights are provided batch size may vary due to uniqueness in batch but weighted sampling
         """
-        self.labels = labels if isinstance(labels, torch.LongTensor) \
-            else torch.LongTensor(labels)
+        self.labels = labels if isinstance(labels, torch.LongTensor) else torch.LongTensor(labels)
         self.idcs_labeled = torch.nonzero(self.labels).view(-1)
-        self.idcs_unlabeled = torch.nonzero(self.labels == 0).view(-1)
+        self.idcs_unlabeled = torch.nonzero(torch.eq(self.labels, 0)).view(-1)
 
         self.N_labeled = len(self.idcs_labeled)
         self.N_unlabeled = len(self.idcs_unlabeled)
@@ -277,7 +276,7 @@ class PartiallyLabeledBatchSampler(BatchSampler):
             #   P_c = sum_{i=1}^{N_c} p_i^c --> p_i^c = P_c / N_c
             label_counter = Counter(self.labels.numpy())
             map_fn = lambda x: classweights[x] * 1.0 / label_counter[x]
-            sampleweights = np.array(map(map_fn, self.labels[self.idcs_labeled].numpy()))
+            sampleweights = np.array(list(map(map_fn, self.labels[self.idcs_labeled].numpy())))
         else:
             sampleweights = np.ones(self.N_labeled)
 
@@ -296,7 +295,7 @@ class PartiallyLabeledBatchSampler(BatchSampler):
         count_used_labeled = 0
         count_used_unlabeled = 0
 
-        idcs_labeled = self.idcs_labeled[torch.stack(list(self.sampler_labeled))]
+        idcs_labeled = self.idcs_labeled[list(self.sampler_labeled)]
         self.idcs_unlabeled = self.idcs_unlabeled[torch.randperm(self.N_unlabeled)]
 
         while self.count < len(self):
@@ -308,7 +307,7 @@ class PartiallyLabeledBatchSampler(BatchSampler):
             count_used_unlabeled += self.N_unlabeled_batch
 
             if count_used_labeled + self.N_labeled_batch > self.N_labeled:
-                idcs_labeled = self.idcs_labeled[torch.stack(list(self.sampler_labeled))]
+                idcs_labeled = self.idcs_labeled[list(self.sampler_labeled)]
                 count_used_labeled = 0
             if count_used_unlabeled + self.N_unlabeled_batch > self.N_unlabeled:
                 self.idcs_unlabeled = self.idcs_unlabeled[torch.randperm(self.N_unlabeled)]

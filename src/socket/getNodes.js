@@ -58,7 +58,6 @@ export default socket => async (data) => {
             return JSON.parse(data);
         })
          */
-        console.log(jsonAll);
         const jsonNodes = jsonAll.nodes;
         const keys = Object.keys(jsonNodes);
         console.log(`get #${keys.length} nodes from init`);

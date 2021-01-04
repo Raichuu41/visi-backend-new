@@ -48,12 +48,12 @@ class TSNELoss(nn.Module):
         numerator = torch.pow(1 + dist_sq, -1)
 
         # compute denominator
-        idcs_upper = torch.triu(torch.ones(dist_sq.shape, dtype=torch.uint8), diagonal=1) # use symmetry and discard diagonal entries
+        idcs_upper = torch.triu(torch.ones(dist_sq.shape, dtype=torch.bool), diagonal=1) # use symmetry and discard diagonal entries
         denominator = 2.0 * torch.sum(numerator[idcs_upper])
 
         # compute probability and set Q_ii to zero
         Q = numerator / denominator
-        Q[torch.eye(Q.shape[0], dtype=torch.uint8)] = 0
+        Q[torch.eye(Q.shape[0], dtype=torch.bool)] = 0
 
         # ensure there are no zeros or negative values
         Q = torch.where(Q > 0, Q, torch.tensor(MACHINE_EPSILON).type_as(Q))
@@ -297,8 +297,8 @@ class TripletLossWrapper(TripletLoss):
     def forward(self, data, output):
         features = output[0]
         indices = data[1]
-        labels = torch.tensor(self.data_labels[indices])
-        weights = torch.tensor(self.data_weights[indices], device=features.device)
+        labels = self.data_labels[indices].clone().detach()
+        weights = self.data_weights[indices].clone().detach().to(features.device)
 
         # compute triplet loss for minibatches
         minibatches = list(BalancedBatchSampler(labels.cpu().numpy(),

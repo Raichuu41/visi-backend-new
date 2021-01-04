@@ -244,7 +244,7 @@ def train_embedder(embedder, features, lr=1e-3, batch_size=2000, random_state=12
 def train_mapnet(model, features, labels, weights=None,
                  test_features=None, test_labels=None,
                  lr=1e-3, batch_size=2000, batch_frac_labeled=0.7,
-                 random_state=123, use_gpu=True,
+                 random_state=123, use_gpu=False,
                  verbose=False, outpath=None, log_dir=None, max_epochs=float('inf'),
                  plot_fn=None):
     use_test = test_features is not None and test_labels is not None
@@ -388,9 +388,9 @@ def train_mapnet(model, features, labels, weights=None,
         stopcriterion = (optimizer.param_groups[-1]['lr'] < lr_threshold) or \
                         (trainlosses[0] < 1)
 
-    # refine projection
-    best_weights = load_weights(outpath, model.state_dict())
-    model.load_state_dict(best_weights)
+    # refine projection, only required if we check for the best weights (by including previous models, too)
+    # best_weights = load_weights(outpath, model.state_dict())
+    # model.load_state_dict(best_weights)
     model.eval()
     mapped_features = evaluate_model(model.mapping, features, batch_size=batch_size, use_gpu=use_gpu, verbose=verbose)
     mapped_features /= mapped_features.norm(dim=1, keepdim=True)
@@ -407,6 +407,7 @@ def train_mapnet(model, features, labels, weights=None,
     print('Finished training mapnet with best training loss: {:.4f} from epoch {}.'.format(best_loss, best_epoch))
     if outpath is not None:
         print('Saved model to {}.'.format(outpath))
+    return model
 
 def train_mapnet_cosine(model, features, labels, weights=None,
                         test_features=None, test_labels=None,
@@ -574,6 +575,7 @@ def train_mapnet_cosine(model, features, labels, weights=None,
     print('Finished training mapnet with best training loss: {:.4f} from epoch {}.'.format(best_loss, best_epoch))
     if outpath is not None:
         print('Saved model to {}.'.format(outpath))
+    return model
 
 
 def train_mapnet_weights(model, features, labels, weights=None,

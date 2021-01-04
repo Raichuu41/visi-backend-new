@@ -338,11 +338,13 @@ def make_video(dir, prefix, name):
 
 
 def load_weights(weightfile, state_dict_model, prefix_file='', prefix_model=''):
+    """
     print("=> loading weights from '{}'".format(weightfile))
     try:
         pretrained_dict = torch.load(weightfile, map_location=lambda storage, loc: storage)['state_dict']
     except KeyError:
         pretrained_dict = torch.load(weightfile, map_location=lambda storage, loc: storage)
+    """
     # replace prefix in weightfile in case there is one when copying weights
     pretrained_dict = {k.replace(prefix_file, prefix_model): v for k, v in pretrained_dict.items()
                        # in case of multilabel weight file

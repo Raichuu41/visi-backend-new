@@ -337,6 +337,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             cursor.execute(query, (user_id, dataset_id))
             result = cursor.fetchall()
             self.wfile.write(json.dumps(result, indent=4, default=str).encode())
+        if '/resetTempModel' in self.path:
+            self.send_response(200)
+            self.end_headers()
+            query = self.path.split('?')[1]
+            user_id = int(query.split('=')[1])
+            temporary_models.pop(user_id, None)  # delete previous temporary model if available
+            print(f'Reset temporary model of user ID {user_id}')
+            self.wfile.write(b'{}')
 
         if '/loadSnapshot' in self.path:
             self.send_response(200)
@@ -437,6 +445,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     # delete old model
                     weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
                     if data['init'] == 'new':
+                        # this might not be necessary anymore (resets are done on switch dataset/logout)
                         temporary_models.pop(user_id, None)  # delete previous temporary model if available
                     # set attributes for katja legacy and svm training
                     if os.path.isfile(weightfile) and data['init'] == 'resume':
@@ -474,7 +483,6 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     if True:
                         dataset_name = user_datas[user_id].get_current_dataset()
                         initial_data = initial_datas[dataset_name]
-                        # todo:: load temporary model here if available, otherwise create new one
                         model = temporary_models[user_id] if user_id in temporary_models else mapnet(
                             N_LAYERS, pretrained=False, new_pretrain=True
                         )

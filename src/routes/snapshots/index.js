@@ -37,6 +37,20 @@ router.get('/load', async (req, res, next) => {
     }
 });
 
+router.get('/resetTempModel', async (req, res, next) => {
+    console.log('GET: reset temporary model');
+    const {userid} = req.query;
+    try {
+        const data = await fetch(`${pythonApi}/resetTempModel?userid=${userid}`)
+            .then(response => response.json());
+        res.json(data);
+    } catch (err) {
+        console.error('error - reset temporary moodel');
+        console.error(err);
+        next(err);
+    }
+});
+
 
 router.post('/', async (req, res, next) => {
     console.log('POST: snapshots');

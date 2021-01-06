@@ -11,6 +11,7 @@ import snapshots from './routes/snapshots/index.js';
 import requestImage from './socket/requestImage.js';
 import updateEmbedding from './socket/updateEmbedding.js';
 import getNodes from './socket/getNodes.js';
+import saveSnapshot from './socket/saveSnapshot.js';
 import login from './routes/login.js';
 
 const app = express();
@@ -88,6 +89,7 @@ io.sockets.on('connection', (socket) => {
     socket.on('updateEmbedding', updateEmbedding(socket));
 
     socket.on('getNodes', getNodes(socket));
+    socket.on('saveSnapshot', saveSnapshot(socket));
 
     socket.on('disconnect', (reason) => {
         console.log('disconnect: ', socket.id);

@@ -13,6 +13,7 @@ import updateEmbedding from './socket/updateEmbedding.js';
 import getNodes from './socket/getNodes.js';
 import saveSnapshot from './socket/saveSnapshot.js';
 import getGroupNeighbours from './socket/getGroupNeighbours.js';
+import socketLogin from './socket/login.js';
 import login from './routes/login.js';
 
 const app = express();
@@ -86,7 +87,7 @@ io.sockets.on('connection', (socket) => {
     console.log('# sockets connected', io.engine.clientsCount);
 
     socket.on('requestImage', requestImage(socket));
-
+    socket.on('login', socketLogin(socket));
     socket.on('updateEmbedding', updateEmbedding(socket));
 
     socket.on('getNodes', getNodes(socket));

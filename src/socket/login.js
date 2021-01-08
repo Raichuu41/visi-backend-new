@@ -1,9 +1,12 @@
 import { connection } from '../routes/login.js';
+import fetch from 'node-fetch';
+import {pythonApi} from '../config/pythonApi.js';
 import md5 from 'md5';
 
 export default socket => async (data) => {
     console.log('Socket on: login');
     const { user, password } = data;
+    await fetch(`${pythonApi}/checkTemporaryModels`);  // trigger deletion of old temp models
     if (!user) {
         socket.emit('BE-login', {status: 'failed', error: 'User is missing'});
         return null;

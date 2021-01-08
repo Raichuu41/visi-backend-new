@@ -209,6 +209,20 @@ def save_model(model, snapshot_id):
     torch.save(model.state_dict(), model_path)
 
 
+def delete_due_models():
+    """
+    | Deletes temporary models which exist for too long where we can assume it is out of use.
+    | Can only happen if the user didn't close the application properly
+    """
+    current_time = time.perf_counter()
+    max_duration = 86400  # one day in seconds
+    to_delete = [user_id for user_id, (_, timestamp) in temporary_models.items()
+                 if current_time - timestamp >= max_duration]
+    for user_id in to_delete:
+        temporary_models.pop(user_id, None)
+        print(f'Deleted outdated model of user {user_id}!')
+
+
 def delete_snapshot(snapshot_id):
     snapshot_path = f'snapshots/snapshot_{snapshot_id}.json'
     model_path = f'snapshots/model_{snapshot_id}.json'
@@ -304,7 +318,12 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        # by julian
+        if '/checkTemporaryModels' in self.path:
+            self.send_response(200)
+            self.end_headers()
+            delete_due_models()
+            self.wfile.write(b'{}')
+
         if "/getNodes" in self.path:
             print("GET /getNodes")
             # POST Request Header
@@ -359,7 +378,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 model = mapnet(N_LAYERS, pretrained=False, new_pretrain=True)
                 model.load_state_dict(torch.load(f'snapshots/model_{snapshot_id}.pth'))
                 model.eval()
-                temporary_models[user_id] = model  # save model for future references
+                temporary_models[user_id] = (model, time.perf_counter())  # save model for future references
             self.wfile.write(json.dumps(data, indent=4, ).encode())
 
     def do_POST(self):
@@ -396,7 +415,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             check_amount_of_snapshots(user_id, dataset_id)
             save_snapshot(data, generated_snapshot_id)
             if modified_model:  # model was changed
-                save_model(temporary_models[user_id], generated_snapshot_id)
+                save_model(temporary_models[user_id][0], generated_snapshot_id)
             db_connection.commit()  # save changes to the database
             print(f'Successfully saved the snapshot {snapshot_name} with ID {generated_snapshot_id}!')
             self.wfile.write(b'{}')
@@ -450,8 +469,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     # set attributes for katja legacy and svm training
                     if os.path.isfile(weightfile) and data['init'] == 'resume':
                         # create a fresh new model
-                        temporary_models[user_id] = mapnet(N_LAYERS, pretrained=False, new_pretrain=True)
-                        proj = generate_projections(temporary_models[user_id], initial_data['features_raw'])
+                        temporary_models[user_id] = (mapnet(N_LAYERS, pretrained=False, new_pretrain=True),
+                                                     time.perf_counter())
+                        proj = generate_projections(temporary_models[user_id][0], initial_data['features_raw'])
                         sendback = True
                         print("DEBUG! Generated Projections")
                     else:
@@ -483,7 +503,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     if True:
                         dataset_name = user_datas[user_id].get_current_dataset()
                         initial_data = initial_datas[dataset_name]
-                        model = temporary_models[user_id] if user_id in temporary_models else mapnet(
+                        model = temporary_models[user_id][0] if user_id in temporary_models else mapnet(
                             N_LAYERS, pretrained=False, new_pretrain=True
                         )
                         if nvidia_gpu_available:
@@ -502,10 +522,11 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         # TODO: end timing
                         # todo:: save temporary model to variable + save in snapshot when initiated
                         # save newly trained model temporarily (for later snapshot save)
-                        temporary_models[user_id] = train.train_mapnet(model, features, labels, verbose=True,
-                                                                       use_gpu=nvidia_gpu_available)
+                        temporary_models[user_id] = (train.train_mapnet(model, features, labels, verbose=True,
+                                                                        use_gpu=nvidia_gpu_available),
+                                                     time.perf_counter())
                         # generate projection with new model
-                        proj = generate_projections(temporary_models[user_id], features)
+                        proj = generate_projections(temporary_models[user_id][0], features)
 
                         # reply with new projection
                         user_datas[user_id].graph_df = communication.make_graph_df(
@@ -600,7 +621,7 @@ if __name__ == "__main__":
         'database': 'visiexp',
         'raise_on_warnings': True
     }
-    temporary_models = {}
+    temporary_models = {}  # expected key = user ID, value = tuple(model, timestamp)
     nvidia_gpu_available = torch.cuda.is_available()
     try:
         db_connection = mysql.connector.connect(**db_config)
@@ -614,4 +635,4 @@ if __name__ == "__main__":
         http_server.serve_forever()
     except KeyboardInterrupt:
         print(time.asctime(), 'Server Stops - %s:%s' % (HOST_NAME, PORT_NUMBER), '- Beenden mit STRG+C')
-    http_server.socket.close()
+        http_server.socket.close()

@@ -12,7 +12,7 @@ const router = Router();
 
 // GET - /api/v1/dataset/all
 router.get('/all', async (req, res) => {
-    // TODO check if there bin files exist
+    console.log('/dataset/all');
     const datasets = dataSet.map(({
         id, name, description, size,
     }) => {

@@ -21,7 +21,7 @@ def pdist(vectors):
 
 
 class TSNELoss(nn.Module):
-    def __init__(self, N, perplexity=30, early_exaggeration_fac=1, use_gpu=False):
+    def __init__(self, N, perplexity=10, early_exaggeration_fac=1, use_gpu=False):
         super(TSNELoss, self).__init__()
         self.N = N
         self.perplexity = perplexity

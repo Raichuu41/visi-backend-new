@@ -400,12 +400,14 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
             groups_count = len(data['groups'])
             snapshot_name = data['snapshotName']
             modified_model = data['modelChanged']
+            display_count = data['displayCount']
             cursor = db_connection.cursor()
             # insert new row for snapshots data
             try:
                 cursor.execute('''INSERT INTO visiexp.snapshots (user_id, snapshot_name, dataset_id, 
-                modified_model, count, groups_count) VALUES (%s, %s, %s, %s, %s, %s)''',
-                               (user_id, snapshot_name, dataset_id, modified_model, dataset_count, groups_count))
+                modified_model, count, groups_count, display_count) VALUES (%s, %s, %s, %s, %s, %s, %s)''',
+                               (user_id, snapshot_name, dataset_id, modified_model, dataset_count, groups_count,
+                                display_count))
             except mysql.connector.Error as e:
                 print(f'Error: {e}')
                 self.send_response(500)

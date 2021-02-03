@@ -28,29 +28,13 @@ const dataSet = [
         imgPath: path.join(__dirname, '../../images/images_3000'),
         size: 11728,
     },
-    /*
     {
-        id: '010',
-        name: 'small_test_100',
-        description: 'Test for SVM Matching',
-        imgPath: path.join(__dirname, '../../images/small_test_100'),
-        size: 73,
-    },
-    {
-        id: '005',
-        name: 'test_data',
-        description: 'Some test data for testing',
-        imgPath: path.join(__dirname, '../../images/test_data'),
-        size: 65
-    },
-    {
-        id: '006',
-        name: 'test_30',
-        description: 'Around 30 pictures for index test',
-        imgPath: path.join(__dirname, '../../images/test_30'),
-        size: 36
+        id: '001',
+        name: 'xxl_data',
+        description: 'Huge XXL dataset',
+        imgPath: path.join(__dirname, '../../images/xxl_data'),
+        size: 49110,
     }
-    */
 ];
 
 export default dataSet;

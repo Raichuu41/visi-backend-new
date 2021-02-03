@@ -4,7 +4,7 @@ import { pythonApi } from '../config/pythonApi.js';
 export default socket => async (data) => {
     console.log('Socket on: saveSnapshot');
     const {
-        nodes, groups, dataset, count, userid, snapshotName, modelChanged
+        nodes, groups, dataset, count, userid, snapshotName, modelChanged, displayCount
     } = data;
     try {
         await fetch(`${pythonApi}/saveSnapshot`, {
@@ -18,6 +18,7 @@ export default socket => async (data) => {
                 userid,
                 snapshotName,
                 modelChanged,
+                displayCount,
             }),
         })
             .then(response => response.text());

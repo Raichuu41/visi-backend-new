@@ -616,10 +616,19 @@ if __name__ == "__main__":
     HOST_NAME = "localhost"
     PORT_NUMBER = 8023
     print(SPLASH)
+    """
     db_config = {
         'user': 'visi',
         'password': 'test123',
         'host': 'localhost',
+        'database': 'visiexp',
+        'raise_on_warnings': True
+    }
+    """
+    db_config = {
+        'user': 'visi',
+        'password': '!vsearch12',
+        'host': '129.206.106.202',
         'database': 'visiexp',
         'raise_on_warnings': True
     }

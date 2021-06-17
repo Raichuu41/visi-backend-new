@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "cross-env NODE_ENV=develop nodemon -V --ignore 'snapshots/*' --exec babel-node -- ./src",
+    "prod": "cross-env NODE_ENV=production nodemon -V --ignore 'snapshots/*' --exec babel-node -- ./src",
     "debug": "cross-env NODE_ENV=development babel-node %NODE_DEBUG_OPTION% -- ./src",
     "cluster": "cross-env NODE_ENV=development nodemon --exec babel-node -- ./performance/clustering",
     "clusterdebug": "cross-env NODE_ENV=development nodemon --exec babel-node %NODE_DEBUG_OPTION% -- ./performance/clustering",

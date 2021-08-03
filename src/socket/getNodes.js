@@ -100,7 +100,6 @@ export default socket => async (data) => {
             rangeX,
             rangeY,
         });
-        console.log(nodes);
         Object.keys(nodes)
             .forEach((k) => {
                 nodes[k].x = (((nodes[k].x - minX) / rangeX) * 30) - 15;

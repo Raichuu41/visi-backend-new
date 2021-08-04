@@ -21,6 +21,7 @@ import python_code.train as train
 from python_code.model import MapNet, mapnet
 from python_code.aux import scale_to_range, load_weights
 import warnings
+import argparse
 
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
@@ -614,7 +615,11 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     # config
-    HOST_NAME = "localhost"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-prod', '--production', help='Use this argument if you want to run in production mode',
+                        nargs='?', const=True, default=False)
+    parsed_values = parser.parse_args()
+    HOST_NAME = "localhost" if not parsed_values.production else '129.206.117.194'  # production server's IP
     PORT_NUMBER = 8023
     print(SPLASH)
     """

@@ -77,7 +77,8 @@
 ### Starting the Python Backend Server
 1. Ensure that the Database Credentials are correctly set in `server.py`
 2. Ensure that the hostname is correctly set in `server.py`
-3. Run `python server.py`
+3. Run `python server.py` to run the development mode
+4. Run `python server.py -prod` or `python server.py --production` to run the production mode
 
 ### Starting the Node Backend Server
 1. Run `npm run dev` to run the development mode

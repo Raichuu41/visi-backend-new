@@ -27,7 +27,7 @@ with warnings.catch_warnings():
     import mysql.connector
 
 N_LAYERS = 0
-DATA_DIR = sys.argv[1]
+DATA_DIR = os.path.abspath(os.path.join(__file__, '../images/init_json'))  # path to init_json folder
 IMPATH = None  # should not be needed, since all features should be precomputed
 FEATURE_DIM = 512
 PROJECTION_DIM = 2

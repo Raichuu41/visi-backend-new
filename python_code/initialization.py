@@ -368,16 +368,6 @@ class Initializer(object):
                     data_dict['multi_features'] /= np.linalg.norm(data_dict['multi_features'], axis=2, keepdims=True)
                 else:
                     data_dict['multi_features'] /= np.linalg.norm(data_dict['multi_features'], axis=1, keepdims=True)
-        """ #OLD
-        if os.path.isfile(self.projection_file):
-            data = dd.io.load(self.projection_file)
-            if data_dict['image_id'] is not None:       # check if indexing is correct
-                if np.any(data_dict['image_id'] != data['image_id']):
-                    raise RuntimeError('Image IDs in feature file and projection file do not match.')
-            else:
-                data_dict['image_id'] = data['image_id']
-            data_dict['projection'] = data['projection']
-        """
         if self.info_file is not None and os.path.isfile(self.info_file):
             data = json.load(open(self.info_file, 'r'))
             proj = [[data['nodes'][image_id]['x'], data['nodes'][image_id]['y']] for image_id in data_dict['image_id']]
@@ -423,13 +413,6 @@ class Initializer(object):
                     self.make_feature_file(batchsize=16, pca=pca)
                 else:
                     self.make_feature_file(batchsize=16)
-
-        """ # TODO: make projections renewable
-        if projection:
-            if not os.path.isfile(self.projection_file):
-                self.make_projection_file()
-        """
-
         if multi_features:
             if not os.path.isfile(self.multi_feature_file):
                 if is_test:
@@ -454,12 +437,6 @@ class Initializer(object):
 
 
 if __name__ == '__main__':
-    # labelnames = ['artist', 'genre', 'style']
-    # splits = ['train', 'test']
-    # dataset_dir = './dataset_info'
-    # impath = '/export/home/kschwarz/Documents/Data/Wikiart_Elgammal'
-    #
-    # dataset_names = ['Wikiart_Elgammal_EQ_{}_{}'.format(l, s) for l, s in product(labelnames, splits)]
 
     labelnames = ['vectors']
     splits = ['train', 'test']
@@ -467,13 +444,6 @@ if __name__ == '__main__':
     impath = '/net/hci-storage02/groupfolders/compvis/datasets/Animals_with_Attributes2/single_folder_images2'
 
     dataset_names = ['AwA2_{}_{}'.format(l, s) for l, s in product(labelnames, splits)]
-
-    # labelnames = ['label']
-    # splits = ['test']
-    # dataset_dir = './dataset_info'
-    # impath = '/export/home/kschwarz/Documents/Data/STL/single_folder_images_test'
-
-    # dataset_names = ['STL_{}_{}'.format(l, s) for l, s in product(labelnames, splits)]
 
     for i, dataset_name in enumerate(dataset_names):
         print('{}/{}'.format(i+1, len(dataset_names)))

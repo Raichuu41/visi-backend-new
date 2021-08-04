@@ -1,16 +1,9 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Thu Feb 27 09:25:24 2018
-@author: jlibor
-"""
-# Aktuelle Version als Hilfe ausgeben
 import os
-import sys
 import numpy as np
 import torch
 from http.server import BaseHTTPRequestHandler, HTTPServer  # python 3
 import json
-# from compute_embedding_snack import compute_graph
 import time, threading
 import requests
 from random import uniform
@@ -47,7 +40,6 @@ SPLASH = """
 +-------------------------------------------+
 """
 # global variables
-initial_datas = {}
 user_datas = {}
 
 
@@ -80,22 +72,6 @@ class UserData:
     def get_current_dataset(self):
         return self.dataset
 
-
-def initialize_dataset(dataset_name):
-    print(f'Initialize {dataset_name}...')
-    data_info_file = os.path.join(DATA_DIR, f'{dataset_name}.json')
-    initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file,
-                                   feature_dim=FEATURE_DIM, outdir=DATA_DIR)
-    initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'), raw_features=True)
-    initial_datas[dataset_name] = initializer.get_data_dict(normalize_features=True)
-    # sort the features, projection and image IDs
-    sorted_idx = np.argsort(initial_datas[dataset_name]['image_id'])
-    initial_datas[dataset_name]['image_id'] = [initial_datas[dataset_name]['image_id'][i] for i in sorted_idx]
-    initial_datas[dataset_name]['info'] = initial_datas[dataset_name]['info'].iloc[sorted_idx]
-    for key, value in initial_datas[dataset_name].items():
-        if isinstance(initial_datas[dataset_name][key], np.ndarray):
-            initial_datas[dataset_name][key] = value[sorted_idx]
-    print(f'Done [{dataset_name}].')
 
 
 def generate_projections(model, features):
@@ -308,8 +284,26 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
         self.socket_id = ''
         self.inter = SetInterval(0.6, update_embedding_handler)
+        self.initialized_data = {}
 
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
+
+    def initialize_dataset(self, dataset_name):
+        print(f'Initialize {dataset_name}...')
+        data_info_file = os.path.join(DATA_DIR, f'{dataset_name}.json')
+        initializer = init.Initializer(dataset_name, impath=IMPATH, info_file=data_info_file,
+                                       feature_dim=FEATURE_DIM, outdir=DATA_DIR)
+        initializer.initialize(dataset=IMPATH is not None, is_test=dataset_name.endswith('_test'), raw_features=True)
+        self.initialized_data[dataset_name] = initializer.get_data_dict(normalize_features=True)
+        # sort the features, projection and image IDs
+        sorted_idx = np.argsort(self.initialized_data[dataset_name]['image_id'])
+        self.initialized_data[dataset_name]['image_id'] = [
+            self.initialized_data[dataset_name]['image_id'][i] for i in sorted_idx]
+        self.initialized_data[dataset_name]['info'] = self.initialized_data[dataset_name]['info'].iloc[sorted_idx]
+        for key, value in self.initialized_data[dataset_name].items():
+            if isinstance(self.initialized_data[dataset_name][key], np.ndarray):
+                self.initialized_data[dataset_name][key] = value[sorted_idx]
+        print(f'Done [{dataset_name}].')
 
     def do_OPTIONS(self):
         self.send_response(200, "ok")
@@ -461,9 +455,9 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                         [v['index'] for v in data['nodes'].values()])  # store which keys are used, for the svm
 
                     # if dataset not yet initialized, catch up
-                    if dataset_name not in initial_datas:
-                        initialize_dataset(dataset_name)
-                    initial_data = initial_datas[dataset_name]
+                    if dataset_name not in self.initialized_data:
+                        self.initialize_dataset(dataset_name)
+                    initial_data = self.initialized_data[dataset_name]
 
                     # delete old model
                     weightfile = weightfile_path(user_id, dataset_name, make_dirs=False)
@@ -506,7 +500,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                     # with torch.cuda.device(DEVICE):
                     if True:
                         dataset_name = user_datas[user_id].get_current_dataset()
-                        initial_data = initial_datas[dataset_name]
+                        initial_data = self.initialized_data[dataset_name]
                         model = temporary_models[user_id][0] if user_id in temporary_models else mapnet(
                             N_LAYERS, pretrained=False, new_pretrain=True
                         )
@@ -572,7 +566,7 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
                 user_id = data['userId']
                 user_data = user_datas[user_id]
                 dataset_name = user_data.dataset
-                initial_data = initial_datas[dataset_name]
+                initial_data = self.initialized_data[dataset_name]
 
                 group_id = int(data['groupId'])
                 thresh = float(data['threshold'])

@@ -1,7 +1,7 @@
 import md5 from 'md5';
 import Router from 'express';
 import db from '../config/db_secret.js';
-import mysql from 'mysql';
+import mysql from 'mysql2';
 
 const router = Router();
 

@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    "images/",
+    "node_modules/"
+  ],
+  "watch": [
+    "src/"
+  ]
+}

@@ -79,6 +79,7 @@ class UserData:
     def get_current_dataset(self):
         return self.dataset
 
+
 def initialize_dataset(dataset_name):
     print(f'Initialize {dataset_name}...')
     data_info_file = os.path.join(DATA_DIR, f'{dataset_name}.json')

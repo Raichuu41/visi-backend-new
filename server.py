@@ -619,25 +619,26 @@ if __name__ == "__main__":
     parser.add_argument('-prod', '--production', help='Use this argument if you want to run in production mode',
                         nargs='?', const=True, default=False)
     parsed_values = parser.parse_args()
-    HOST_NAME = "localhost" if not parsed_values.production else '129.206.117.194'  # production server's IP
+    production_mode = parsed_values.production
+    HOST_NAME = "localhost" if not production_mode else '129.206.117.194'  # production server's IP
     PORT_NUMBER = 8023
     print(SPLASH)
-    """
-    db_config = {
-        'user': 'visi',
-        'password': 'test123',
-        'host': 'localhost',
-        'database': 'visiexp',
-        'raise_on_warnings': True
-    }
-    """
-    db_config = {
-        'user': 'visi',
-        'password': '!vsearch12',
-        'host': '129.206.106.202',
-        'database': 'visiexp',
-        'raise_on_warnings': True
-    }
+    if not production_mode:  # local database credentials
+        db_config = {
+            'user': 'visi',
+            'password': 'test123',
+            'host': 'localhost',
+            'database': 'visiexp',
+            'raise_on_warnings': True
+        }
+    else:  # server database credentials
+        db_config = {
+            'user': 'visi',
+            'password': '!vsearch12',
+            'host': '129.206.106.202',
+            'database': 'visiexp',
+            'raise_on_warnings': True
+        }
     temporary_models = {}  # expected key = user ID, value = tuple(model, timestamp)
     nvidia_gpu_available = torch.cuda.is_available()
     try:

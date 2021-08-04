@@ -42,6 +42,8 @@
     - Creates a user accessible from specified host with a defined password
 5. show databases
     - Shows all the available databases which the logged in MySQl user can see
+6. create database [database name]
+    - Creates the database with specified name
 6. use [database name]
     - Switches to use the specified database
 7. grant all privileges on [database name].* to xyz@localhost

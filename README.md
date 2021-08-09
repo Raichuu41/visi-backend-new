@@ -6,6 +6,9 @@ Ideally it runs in parallel
    - One new connection for each user between Node - Python
 - Performance of group counter is extremely slow
    - The calculation of how many images are in one group is inefficient
+- All Nodes Iterations (Frontend) performance improvements
+   - updateGroupCount fix
+   - updateNodesInRange (Cluster mode)
 
 # Instructions
 

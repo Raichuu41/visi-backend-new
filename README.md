@@ -1,3 +1,12 @@
+## Todo Notes
+- Python is holding any upcoming requests while initializing the dataset.
+Ideally it runs in parallel 
+   - Python WebSocket Server
+   - Python async requests
+   - One new connection for each user between Node - Python
+- Performance of group counter is extremely slow
+   - The calculation of how many images are in one group is inefficient
+
 # Instructions
 
 ## Prerequisites

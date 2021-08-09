@@ -84,4 +84,4 @@
 
 ### Starting the Node Backend Server
 1. Run `npm run dev` to run the development mode
-2. Run `npm run prod` tor un the production mode
+2. Run `npm run prod` to run the production mode

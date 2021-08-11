@@ -8,7 +8,29 @@ Ideally it runs in parallel
    - The calculation of how many images are in one group is inefficient
 - All Nodes Iterations (Frontend) performance improvements
    - updateGroupCount fix
-   - updateNodesInRange (Cluster mode)
+- Fix scissor mode to run not in preview mode
+- Adjust max image size based on max displayed counter instead of total images
+- Add a popup menu when clicking on the max count to change the max count dynamically
+
+
+## Changelog
+### Frontend
+- Drawing of heatmap optimized to only draw the displayed nodes
+- Add a dynamic initial scale based on showing 60% of the images on the initial view
+- Create cluster optimizations (creating cluster only for displayed nodes)
+- Displayed node optimization (no recalculations if not necessary)
+- Added preview mode with delayed switch to normal mode. Triggers on draw-intensive actions
+- Added dynamic max image size based on images count in the dataset for better performance
+- Fully implemented switch between development and production mode for easier deployment
+- Added useful instructions in the README file
+### Backend
+- Improved getNodes performance
+- Improved Python server run to no longer require an absolute path to init_json
+- Improved the image list generator for easier use
+- Added useful instructions in the README file
+- Fully implemented switch between development and production mode for easier deployment
+- Improved nodemon performance with nodemon.json configuration for file watch definitions
+- Improved Python server to use less global variables
 
 # Instructions
 

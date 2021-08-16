@@ -23,6 +23,7 @@ Ideally it runs in parallel
 - Added dynamic max image size based on images count in the dataset for better performance
 - Fully implemented switch between development and production mode for easier deployment
 - Added useful instructions in the README file
+- Improved performance by resizing images (normal + preview mode)
 ### Backend
 - Improved getNodes performance
 - Improved Python server run to no longer require an absolute path to init_json
@@ -31,6 +32,7 @@ Ideally it runs in parallel
 - Fully implemented switch between development and production mode for easier deployment
 - Improved nodemon performance with nodemon.json configuration for file watch definitions
 - Improved Python server to use less global variables
+- Adjusted image sizes for the new resizing in the frontend
 
 # Instructions
 

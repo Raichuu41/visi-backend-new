@@ -211,7 +211,7 @@ def delete_snapshot(snapshot_id):
         os.remove(snapshot_path)
         print(f'Successfully deleted the snapshot with ID {snapshot_id}!')
     else:
-        raise ValueError(f'Something went wrong. There was no snapshot with ID {snapshot_id}!')
+        print(f'Something went wrong. There was no snapshot with ID {snapshot_id}!')
 
 
 def check_amount_of_snapshots(user_id, dataset_id, max_allowed=2):

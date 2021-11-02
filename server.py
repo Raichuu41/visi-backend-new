@@ -280,11 +280,11 @@ class MyHTTPHandler(BaseHTTPRequestHandler):
     """
 
     # http://donghao.org/2015/06/18/override-the-__init__-of-basehttprequesthandler-in-python/
+    initialized_data = {}
 
     def __init__(self, request, client_address, server):
         self.socket_id = ''
         self.inter = SetInterval(0.6, update_embedding_handler)
-        self.initialized_data = {}
 
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
